@@ -97,6 +97,7 @@ pub enum RequestMsg {
     ApiKeyValueChanged(String),
     ApiKeyLocationChanged(String),
     CookieStringChanged(String),
+    ToggleBasicPassVisibility,
     // JWT auth
     JwtSecretChanged(String),
     JwtSubjectChanged(String),
@@ -301,7 +302,7 @@ pub enum LayoutMsg {
 
 #[derive(Debug, Clone)]
 pub enum AppMsg {
-  
+
     HttpResponse { generation: u64, result: HttpResult },
     AvatarLoaded(Vec<u8>),
     OpenUrl(String),

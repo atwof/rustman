@@ -30,6 +30,8 @@ pub fn search() -> Text<'static> { glyph('\u{e151}') } // search
 pub fn plus() -> Text<'static> { glyph('\u{e13d}') } // plus
 pub fn send() -> Text<'static> { glyph('\u{e152}') } // send
 pub fn curl() -> Text<'static> { glyph('\u{e245}') }
+pub fn eye() -> Text<'static> { glyph('\u{e0ba}') }
+pub fn eye_closed() -> Text<'static> { glyph('\u{e0bb}') }
 
 // ── Meta / status ───────────────────────────────────────────────────────────────
 pub fn zap() -> Text<'static> { glyph('\u{e1b4}') } // zap
@@ -45,7 +47,6 @@ pub fn chevron_right() -> Text<'static> { glyph('\u{e06f}') }
 pub fn arrow_right() -> Text<'static> { glyph('\u{e049}') }
 pub fn arrow_left() -> Text<'static> { glyph('\u{e048}') }
 pub fn git_branch() -> Text<'static> { glyph('\u{e0e2}') } // git-branch
-
 
 pub fn dot<'a, M: 'a>(color: Color) -> Element<'a, M> {
     container(Space::new())

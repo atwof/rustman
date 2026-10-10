@@ -1,13 +1,10 @@
 use iced::{
-    widget::{column, pick_list, row, text, text_input},
+    widget::{button, column, pick_list, row, text, text_input},
     Element, Length,
 };
 
 use crate::{
-    domain::request::AuthType,
-    message::{Message, RequestMsg},
-    state::tabs::RequestTabState,
-    ui::styles,
+    domain::request::AuthType, message::{Message, RequestMsg}, state::tabs::RequestTabState, ui::{icons::{eye, eye_closed}, styles},
 };
 
 const AUTH_TYPES: &[&str] = &["none", "bearer", "basic", "apikey", "jwt-user", "cookie"];
@@ -38,17 +35,29 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .padding([4, 12])
         .into(),
 
-        AuthType::Basic => column![
-            labeled_input("Username", &tab.basic_user, |s| {
-                Message::Request(RequestMsg::BasicUserChanged(s))
-            }),
-            labeled_input("Password", &tab.basic_pass, |s| {
-                Message::Request(RequestMsg::BasicPassChanged(s))
-            }),
-        ]
-        .spacing(6)
-        .padding([4, 12])
-        .into(),
+        AuthType::Basic => {
+            let eye_icon = if tab.show_basic_pass { eye_closed() } else { eye() };
+
+            column![
+                labeled_input("Username", &tab.basic_user, |s| {
+                    Message::Request(RequestMsg::BasicUserChanged(s))
+                }),
+                row![
+                    labeled_input_secure("Password", &tab.basic_pass, !tab.show_basic_pass, |s| {
+                        Message::Request(RequestMsg::BasicPassChanged(s))
+                    }),
+                    button(eye_icon)
+                        .on_press(Message::Request(RequestMsg::ToggleBasicPassVisibility))
+                        .style(iced::widget::button::text)
+                        .padding(4),
+                ]
+                .spacing(6)
+                .align_y(iced::Alignment::Center)
+            ]
+            .spacing(6)
+            .padding([4, 12])
+            .into()
+        }
 
         AuthType::ApiKey => column![
             labeled_input("Key name", &tab.api_key_name, |s| {
@@ -128,10 +137,20 @@ fn labeled_input<'a>(
     value: &'a str,
     on_input: impl Fn(String) -> Message + 'a,
 ) -> Element<'a, Message> {
+    labeled_input_secure(label, value, false, on_input)
+}
+
+fn labeled_input_secure<'a>(
+    label: &'static str,
+    value: &'a str,
+    secure: bool,
+    on_input: impl Fn(String) -> Message + 'a,
+) -> Element<'a, Message> {
     row![
         text(label).size(12).width(80),
         text_input(label, value)
             .on_input(on_input)
+            .secure(secure)
             .size(12)
             .padding([4, 8])
             .width(Length::Fill)
