@@ -47,7 +47,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                         Message::Request(RequestMsg::BasicPassChanged(s))
                     }),
                     button(eye_icon)
-                        .on_press(Message::Request(RequestMsg::ToggleBasicPassVisibility))
+                        .on_press_maybe((!tab.basic_pass.is_empty())
+                            .then_some(Message::Request(RequestMsg::ToggleBasicPassVisibility)))
                         .style(iced::widget::button::text)
                         .padding(4),
                 ]
