@@ -264,7 +264,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.ws.messages.clear();
         }
         RequestMsg::WsDisconnect => {
-            tab.ws.outgoing_tx = None; 
+            tab.ws.outgoing_tx = None;
             tab.ws.connected = false;
             tab.ws.connecting = false;
         }
@@ -478,6 +478,9 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 }
                 _ => {}
             }
+        }
+        RequestMsg::ToggleBasicPassVisibility => {
+            tab.show_basic_pass = !tab.show_basic_pass;
         }
     }
     Task::none()

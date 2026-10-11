@@ -118,6 +118,7 @@ pub struct RequestTabState {
     pub last_edit: Option<EditKind>,
     pub headers_bulk: Option<text_editor::Content>,
     pub params_bulk: Option<text_editor::Content>,
+    pub show_basic_pass: bool,
 }
 
 /// Identifies the field an edit targets, so a run of keystrokes in one field
@@ -214,6 +215,7 @@ impl RequestTabState {
             last_edit: None,
             headers_bulk: None,
             params_bulk: None,
+            show_basic_pass: false,
         }
     }
 
