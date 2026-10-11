@@ -1,4 +1,4 @@
-use crate::domain::{collection::SavedRequest, history::HistoryEntry};
+use crate::domain::{collection::SavedRequest, group::ImportedCollection, history::HistoryEntry};
 use crate::services::http::HttpResult;
 use tokio::sync::mpsc;
 
@@ -23,17 +23,32 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum SidebarMsg {
     PanelSelected(SidebarPanel),
-    CollectionToggled(String),
     RequestOpened(SavedRequest),
     NewCollection,
     RenameCollection { id: String, name: String },
     ToggleRenameCollection(String),
-    NewRequestIn(String),
+    NewRequestIn { parent_id: String, parent_is_collection: bool },
     ToggleRenameRequest(String),
     RenameRequest { id: String, collection_id: String, name: String },
     DeleteCollection(String),
     DeleteRequest { id: String, collection_id: String },
     CloneRequest { id: String, collection_id: String },
+    // Folders (issue #53): Collection → Backend → Resource → Endpoint.
+    NewGroupIn { parent_id: String, parent_is_collection: bool },
+    ToggleRenameGroup(String),
+    RenameGroup { id: String, name: String },
+    DeleteGroup(String),
+    // Drag-to-reorder within a sibling list (issue #53).
+    ItemDragStart(String),
+    ItemDragOver(String),
+    ItemDragEnd,
+    // Right-click menu on any tree row (collection, folder, request). Ids
+    // are globally unique, so one slot covers all kinds — each row checks
+    // its own id. Open toggles: right-clicking the same row dismisses.
+    ContextMenuOpened(String),
+    ContextMenuClosed,
+    // Escape while a rename field is open: restore the pre-rename name.
+    CancelRename,
     HistoryEntryOpened(HistoryEntry),
     ClearHistory,
     EnvironmentSelected(String),
@@ -161,6 +176,9 @@ pub enum ResponseMsg {
     ViewerEdited(iced_code_editor::Message),
     PdfPageRequested(usize),
     ConsoleEdited(iced::widget::text_editor::Action),
+    /// Step the response viewer one page (see `page_starts` in state/tabs).
+    ViewerPagePrev,
+    ViewerPageNext,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -239,14 +257,14 @@ pub struct RepoAddPayload {
     pub name: String,
     pub path: std::path::PathBuf,
     pub remote_url: Option<String>,
-    pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
+    pub collections: Vec<crate::domain::group::ImportedCollection>,
     pub global_script: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SyncPayload {
     pub repo_id: String,
-    pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
+    pub collections: Vec<crate::domain::group::ImportedCollection>,
     pub label: String,
     pub global_script: Option<(String, String)>,
 }
@@ -257,7 +275,7 @@ pub struct SyncPayload {
 pub enum SaveDialogMsg {
     Close,
     NameChanged(String),
-    CollectionSelected(String),
+    ParentSelected(String),
     ToggleNewCollection,
     NewCollectionNameChanged(String),
     Confirm,
@@ -285,7 +303,8 @@ pub enum ImportMsg {
     CloseExportDialog,
     ExportCollection(String),
     ExportCollectionJson(String),
-    PostmanLoaded(Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>),
+    ExportAllCollections,
+    PostmanLoaded(Vec<ImportedCollection>),
     ExportDone(String),
     Error(String),
 }
@@ -298,13 +317,14 @@ pub enum LayoutMsg {
     ZoomOut,
     ZoomReset,
     PanelSplitChanged(u16),
+    /// Drag on the sidebar/main-area splitter (issue #53): new sidebar width.
+    SidebarWidthChanged(f32),
 }
 
 #[derive(Debug, Clone)]
 pub enum AppMsg {
 
     HttpResponse { generation: u64, result: HttpResult },
-    AvatarLoaded(Vec<u8>),
     OpenUrl(String),
 
     ViewerReady {
@@ -369,6 +389,8 @@ pub enum SettingsMsg {
     CloseGlobalScriptsModal,
     /// Toggle one of the TLS/connection workarounds (issue #40).
     TlsOptionToggled(TlsOption),
+    /// Footer tapped: three taps unlock the hidden creator card.
+    CreatorTapped,
 }
 
 /// The individual TLS/connection settings, for `SettingsMsg::TlsOptionToggled`.

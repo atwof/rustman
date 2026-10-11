@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::app::AppState;
-use crate::domain::collection::{Collection, SavedRequest};
+use crate::domain::group::ImportedCollection;
 use crate::message::{GitMsg, GitView, Message, RepoAddPayload, RepoSummary, SyncPayload};
 use crate::services::repos::{self, GitRepo};
 use crate::services::{storage, vcs};
@@ -93,7 +93,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
         GitMsg::RepoAdded(payload) => {
             let RepoAddPayload { name, path, remote_url, collections, global_script } = *payload;
             let count = collections.len();
-            let ids: Vec<String> = collections.iter().map(|(c, _)| c.id.clone()).collect();
+            let ids: Vec<String> = collections.iter().map(|ic| ic.collection.id.clone()).collect();
             apply_sync(state, collections);
             apply_global_script(state, global_script);
             let id = uuid::Uuid::new_v4().to_string();
@@ -140,7 +140,6 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             crate::app::request_ops::flush_modified_tabs(state);
             let repo_path = active_path(state);
             let collections = collections_for_active(state);
-            let requests = state.requests.clone();
             let global_pre_request_script = state.global_pre_request_editor.text();
             let global_test_script = state.global_test_editor.text();
             let identity = match vcs::resolve_identity(&repo_path) {
@@ -159,7 +158,6 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                 vcs::write_working_tree(
                     &repo_path,
                     &collections,
-                    &requests,
                     &global_pre_request_script,
                     &global_test_script,
                 )?;
@@ -274,7 +272,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
         }
         GitMsg::Synced(payload) => {
             let SyncPayload { repo_id, collections, label, global_script } = *payload;
-            let ids: Vec<String> = collections.iter().map(|(c, _)| c.id.clone()).collect();
+            let ids: Vec<String> = collections.iter().map(|ic| ic.collection.id.clone()).collect();
 
             let incoming: HashSet<&String> = ids.iter().collect();
             for owned in owned_collection_ids(state, &repo_id) {
@@ -311,7 +309,7 @@ struct RepoAdd {
     name: String,
     path: PathBuf,
     remote_url: Option<String>,
-    collections: Vec<(Collection, Vec<SavedRequest>)>,
+    collections: Vec<ImportedCollection>,
     global_script: Option<(String, String)>,
 }
 
@@ -337,7 +335,7 @@ fn active_path(state: &AppState) -> PathBuf {
         .unwrap_or_else(|| state.data_dir.join("collections"))
 }
 
-fn collections_for_active(state: &AppState) -> Vec<Collection> {
+fn collections_for_active(state: &AppState) -> Vec<ImportedCollection> {
     if state.git_active_repo == repos::LOCAL_ID {
         let claimed: HashSet<String> = state
             .git_repos
@@ -345,7 +343,12 @@ fn collections_for_active(state: &AppState) -> Vec<Collection> {
             .filter(|r| r.id != repos::LOCAL_ID)
             .flat_map(|r| r.collection_ids.iter().cloned())
             .collect();
-        state.collections.iter().filter(|c| !claimed.contains(&c.id)).cloned().collect()
+        state
+            .collections
+            .iter()
+            .filter(|c| !claimed.contains(&c.id))
+            .map(|c| crate::app::tree::collection_from_state(state, c))
+            .collect()
     } else {
         let ids: Vec<String> = state
             .git_repos
@@ -353,7 +356,12 @@ fn collections_for_active(state: &AppState) -> Vec<Collection> {
             .find(|r| r.id == state.git_active_repo)
             .map(|r| r.collection_ids.clone())
             .unwrap_or_default();
-        state.collections.iter().filter(|c| ids.contains(&c.id)).cloned().collect()
+        state
+            .collections
+            .iter()
+            .filter(|c| ids.contains(&c.id))
+            .map(|c| crate::app::tree::collection_from_state(state, c))
+            .collect()
     }
 }
 
@@ -361,7 +369,6 @@ fn refresh_task(state: &AppState) -> Task<Message> {
     let repos = state.git_repos.clone();
     let active = state.git_active_repo.clone();
     let active_collections = collections_for_active(state);
-    let requests = state.requests.clone();
     let global_pre_request_script = state.global_pre_request_editor.text();
     let global_test_script = state.global_test_editor.text();
     Task::perform(
@@ -371,7 +378,6 @@ fn refresh_task(state: &AppState) -> Task<Message> {
                     repos,
                     active,
                     active_collections,
-                    requests,
                     global_pre_request_script,
                     global_test_script,
                 )
@@ -390,8 +396,7 @@ fn refresh_task(state: &AppState) -> Task<Message> {
 fn load_view(
     repos: Vec<GitRepo>,
     active: String,
-    active_collections: Vec<Collection>,
-    requests: std::collections::HashMap<String, Vec<SavedRequest>>,
+    active_collections: Vec<ImportedCollection>,
     global_pre_request_script: String,
     global_test_script: String,
 ) -> Result<Box<GitView>, String> {
@@ -404,7 +409,6 @@ fn load_view(
             let _ = vcs::write_working_tree(
                 &repo.path,
                 &active_collections,
-                &requests,
                 &global_pre_request_script,
                 &global_test_script,
             );
@@ -454,7 +458,7 @@ where
     )
 }
 
-type SyncResult = (Vec<(Collection, Vec<SavedRequest>)>, Option<(String, String)>, String);
+type SyncResult = (Vec<ImportedCollection>, Option<(String, String)>, String);
 
 fn sync_task<F>(repo_id: String, op: F) -> Task<Message>
 where
@@ -520,44 +524,26 @@ fn resync_open_tabs(state: &mut AppState) {
     }
 }
 
-/// Remove a collection and its requests from both state and the database.
+/// Remove a collection, its folders and its requests from state and the DB.
 fn remove_collection(state: &mut AppState, id: &str) {
+    let group_ids = crate::app::tree::groups_under(state, id);
+    state.groups.retain(|g| !group_ids.contains(&g.id));
     state.collections.retain(|c| c.id != id);
     let reqs = state.requests.remove(id).unwrap_or_default();
     if let Some(db) = &state.db {
         for req in &reqs {
             let _ = storage::delete_request(db, &req.id);
         }
+        for gid in &group_ids {
+            let _ = storage::delete_group(db, gid);
+        }
         let _ = storage::delete_collection(db, id);
     }
 }
 
-fn apply_sync(state: &mut AppState, collections: Vec<(Collection, Vec<SavedRequest>)>) {
-    for (collection, requests) in collections {
-        let exists = state.collections.iter().any(|c| c.id == collection.id);
-        if let Some(db) = &state.db {
-            if exists {
-                let _ = storage::update_collection(db, &collection.id, &collection.name);
-            } else {
-                let _ = storage::create_collection(db, &collection);
-            }
-            if let Some(old) = state.requests.get(&collection.id) {
-                for req in old {
-                    let _ = storage::delete_request(db, &req.id);
-                }
-            }
-            for req in &requests {
-                let _ = storage::create_request(db, req);
-            }
-        }
-        if exists {
-            if let Some(existing) = state.collections.iter_mut().find(|c| c.id == collection.id) {
-                existing.name = collection.name.clone();
-            }
-        } else {
-            state.collections.push(collection.clone());
-        }
-        state.requests.insert(collection.id.clone(), requests);
+fn apply_sync(state: &mut AppState, collections: Vec<ImportedCollection>) {
+    for imported in collections {
+        crate::app::tree::insert_collection(state, imported);
     }
 }
 

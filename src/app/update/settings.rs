@@ -44,6 +44,14 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
         SettingsMsg::CloseGlobalScriptsModal => {
             state.global_scripts_modal_open = false;
         }
+        SettingsMsg::CreatorTapped => {
+            // Easter egg: triple-tap the footer to reveal the creator card.
+            state.creator_taps += 1;
+            if state.creator_taps >= 3 {
+                state.creator_taps = 0;
+                state.creator_unlocked = !state.creator_unlocked;
+            }
+        }
         SettingsMsg::TlsOptionToggled(option) => {
             use crate::message::TlsOption;
             let tls = &mut state.tls_options;

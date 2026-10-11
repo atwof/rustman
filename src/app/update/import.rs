@@ -2,7 +2,6 @@ use iced::Task;
 
 use crate::app::AppState;
 use crate::message::{AppMsg, ImportMsg, Message};
-use crate::services::storage;
 
 pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
     match msg {
@@ -37,6 +36,7 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
 
         ImportMsg::OpenExportDialog(col_id) => {
             state.export_dialog_collection = Some(col_id);
+            state.sidebar.context_menu = None;
             Task::none()
         }
 
@@ -50,8 +50,12 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             let Some(col) = state.collections.iter().find(|c| c.id == col_id).cloned() else {
                 return Task::none();
             };
-            let reqs = state.requests.get(&col_id).cloned().unwrap_or_default();
-            let json = crate::services::import::native_export(&col, &reqs);
+            let imported = crate::app::tree::collection_from_state(state, &col);
+            let json = crate::services::import::native_export(
+                &imported.collection,
+                &imported.requests,
+                &imported.groups,
+            );
             let file_name = format!("{}.rustman.json", col.name);
             Task::perform(
                 async move {
@@ -81,8 +85,8 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             let Some(col) = state.collections.iter().find(|c| c.id == col_id).cloned() else {
                 return Task::none();
             };
-            let reqs = state.requests.get(&col_id).cloned().unwrap_or_default();
-            let json = crate::services::import::postman::export(&col, &reqs);
+            let imported = crate::app::tree::collection_from_state(state, &col);
+            let json = crate::services::import::postman::export(&imported);
             let file_name = format!("{}.postman_collection.json", col.name);
             Task::perform(
                 async move {
@@ -107,17 +111,45 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             )
         }
 
-        ImportMsg::PostmanLoaded(data) => {
-            let count: usize = data.iter().map(|(_, reqs)| reqs.len()).sum();
-            for (col, reqs) in data {
-                if let Some(db) = &state.db {
-                    let _ = storage::create_collection(db, &col);
-                    for req in &reqs {
-                        let _ = storage::create_request(db, req);
+        ImportMsg::ExportAllCollections => {
+            let all: Vec<crate::domain::group::ImportedCollection> = state
+                .collections
+                .iter()
+                .map(|c| crate::app::tree::collection_from_state(state, c))
+                .collect();
+            if all.is_empty() {
+                state.status_message = Some("Nothing to export — no collections yet".to_owned());
+                return Task::none();
+            }
+            let json = crate::services::import::native_export_all(&all);
+            let file_name = "rustman-collections.json".to_owned();
+            Task::perform(
+                async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .set_file_name(&file_name)
+                        .add_filter("JSON", &["json"])
+                        .set_title("Export All Collections")
+                        .save_file()
+                        .await;
+                    if let Some(f) = file {
+                        let path = f.path().to_path_buf();
+                        let _ = tokio::fs::write(&path, json.as_bytes()).await;
+                        Some(path.to_string_lossy().to_string())
+                    } else {
+                        None
                     }
-                }
-                state.requests.insert(col.id.clone(), reqs);
-                state.collections.push(col);
+                },
+                |path| match path {
+                    Some(p) => Message::Import(ImportMsg::ExportDone(p)),
+                    None => Message::App(AppMsg::Noop),
+                },
+            )
+        }
+
+        ImportMsg::PostmanLoaded(data) => {
+            let count: usize = data.iter().map(|ic| ic.all_requests().len()).sum();
+            for imported in data {
+                crate::app::tree::insert_collection(state, imported);
             }
             state.status_message = Some(format!("Imported {count} requests"));
             Task::none()

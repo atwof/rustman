@@ -24,18 +24,44 @@ jobs:
 
       - name: Determine version and tag
         id: ver
+        env:
+          # Via env rather than inlined into the script: a `${{ }}` expansion
+          # is pasted in as raw text before bash sees it, so a value with
+          # shell metacharacters would run as code.
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
+          set -euo pipefail
+
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            TAG="$GITHUB_REF_NAME"
-            VERSION="${TAG#v}"
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-            TAG="v$VERSION"
+            VERSION="$GITHUB_REF_NAME"
+          elif [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
           else
             BASE=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             VERSION="${BASE}-dev.${{ github.run_number }}"
-            TAG="v$VERSION"
           fi
+
+          # Strip every leading "v", not just one. Cargo needs a bare semver
+          # ("0.3.13"), and the build jobs sed VERSION straight into
+          # Cargo.toml, so a stray prefix here fails the build with
+          # "unexpected character 'v' while parsing major version number".
+          # `${VERSION#v}` only ever removes one, which is how a `v0.3.13`
+          # dispatch input produced tag `vv0.3.13` and an unbuildable
+          # `version = "v0.3.13"`.
+          VERSION="$(printf '%s' "$VERSION" | sed 's/^v*//')"
+
+          # The tag is always derived from the normalised version, so the two
+          # cannot drift apart no matter which trigger fired.
+          TAG="v$VERSION"
+
+          # Fail here with something readable rather than 20 minutes later
+          # inside three parallel cargo builds.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a valid Cargo version. Pass a bare semver like 0.3.13 (no leading 'v')." >&2
+            exit 1
+          fi
+
+          echo "Version: $VERSION / Tag: $TAG"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -122,6 +148,74 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: rustman-linux-x86_64.tar.gz
+
+  # ── Rustman iced · Linux binary without WebKit ──────────────────────────────
+  # Same app built with `--no-default-features`: no WebKitGTK link, so it
+  # starts on systems without libwebkit2gtk (e.g. immutable distros) at the
+  # cost of rendered HTML previews — those fall back to readable text.
+  # Needs none of the webkit/soup/gtk dev packages, only the windowing ones.
+  build-linux-nokit:
+    name: Build · Rustman iced · Linux x86_64 (no WebKit)
+    needs: prepare
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch version in Cargo.toml
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Patched Cargo.toml to $VERSION"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxi-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-xkb-dev \
+            libdbus-1-dev \
+            pkg-config \
+            cmake \
+            build-essential
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Feature sets produce incompatible artefacts; without a distinct
+          # key this job would thrash the full build's cache and vice versa.
+          shared-key: linux-nokit
+
+      - name: Build (release, no WebKit)
+        run: cargo build --release --no-default-features
+
+      - name: Package binary
+        # Same layout as the full build (see above): the binary must be named
+        # `rustman` for the desktop entry and installer script to work.
+        run: |
+          mkdir -p dist/rustman-nokit
+          cp target/release/rustman dist/rustman-nokit/rustman
+          cp public/icon.png dist/rustman-nokit/
+          cp packaging/linux/io.github.animeshchaudhri.rustman.desktop dist/rustman-nokit/
+          cp packaging/linux/install-desktop-entry.sh dist/rustman-nokit/
+          chmod +x dist/rustman-nokit/install-desktop-entry.sh dist/rustman-nokit/rustman
+          tar czf rustman-linux-x86_64-nokit.tar.gz -C dist rustman-nokit
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: rustman-linux-x86_64-nokit.tar.gz
 
   # ── Rustman iced · macOS universal binary ────────────────────────────────────
   build-macos-iced:

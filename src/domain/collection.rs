@@ -15,6 +15,14 @@ pub struct Collection {
 pub struct SavedRequest {
     pub id: String,
     pub collection_id: String,
+    /// The group this endpoint lives in, when it is nested rather than a
+    /// direct child of the collection. `None` = direct child of `collection_id`.
+    #[serde(default)]
+    pub group_id: Option<String>,
+    /// Manual order among the siblings sharing the same parent (collection or
+    /// group). Issue #53: endpoints could previously not be reordered by hand.
+    #[serde(default)]
+    pub sort_order: i64,
     pub name: String,
     pub method: HttpMethod,
     pub url: String,
@@ -58,9 +66,22 @@ impl SavedRequest {
     }
 
     pub fn new_in(collection_id: String, name: String) -> Self {
+        Self::new_in_group(collection_id, None, name, 0)
+    }
+
+    /// A fresh request leaf. `group_id` places it inside a group; `sort_order`
+    /// positions it among that parent's existing children.
+    pub fn new_in_group(
+        collection_id: String,
+        group_id: Option<String>,
+        name: String,
+        sort_order: i64,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             collection_id,
+            group_id,
+            sort_order,
             name,
             method: HttpMethod::Get,
             url: String::new(),

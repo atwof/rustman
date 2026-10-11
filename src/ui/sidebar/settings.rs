@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, image, row, scrollable, svg, text, text_input, Space},
+    widget::{button, column, container, row, scrollable, svg, text, text_input, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -9,34 +9,29 @@ use crate::{
     app::UpdateState,
     message::{AppMsg, Message, SettingsMsg, UpdateMsg},
     ui::theme::{Palette, ThemeSpec, THEMES, TEXT_SM},
+    ui::tree_label::{tree_label, tree_label_styled},
 };
 
 
 pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
-    let avatar_handle = state.profile_avatar.clone();
-
     let header = build_header();
-    let profile = card(build_profile(
-        avatar_handle,
-        state.github_username.clone(),
-        state.github_email.clone(),
-        state.github_website.clone(),
-    ));
+    let profile = card(build_about(state.sidebar_width));
     let git_identity = card(build_git_identity(
         &state.git_user_name,
         &state.git_user_email,
     ));
     let appearance = card(build_appearance(state.theme_idx));
-    let layout = card(build_layout(state.horizontal_layout));
+    let layout = card(build_layout(state.horizontal_layout, state.sidebar_width));
     let request_defaults = card(build_request_defaults(&state.default_timeout_text));
     let tls = card(build_tls(state.tls_options));
     let global_scripts = card(build_global_scripts(
         state.global_pre_request_editor.text().len(),
         state.global_test_editor.text().len(),
+        state.sidebar_width,
     ));
-    let updates = card(build_updates(&state.update));
-    let shortcuts = card(build_shortcuts());
-    let footer = build_footer();
+    let updates = card(build_updates(&state.update, state.sidebar_width));
+    let shortcuts = card(build_shortcuts(state.sidebar_width));
+    let footer = build_footer(state.creator_unlocked, state.sidebar_width);
 
     scrollable(
         column![
@@ -83,7 +78,7 @@ fn build_request_defaults(timeout_text: &str) -> Element<'static, Message> {
             .on_input(|v| Message::Settings(SettingsMsg::DefaultTimeoutChanged(v)))
             .size(12)
             .padding([6, 10])
-            .width(160)
+            .width(Length::Fill)
             .style(crate::ui::styles::field_input),
         Space::new().height(4),
         text("Applied to every request. 0 falls back to 30000.")
@@ -155,7 +150,7 @@ fn tls_toggle(
     .into()
 }
 
-fn build_global_scripts(pre_request_len: usize, test_len: usize) -> Element<'static, Message> {
+fn build_global_scripts(pre_request_len: usize, test_len: usize, content_width: f32) -> Element<'static, Message> {
     let status = match (pre_request_len > 0, test_len > 0) {
         (false, false) => "Not set up yet".to_owned(),
         (true, false) => "Pre-request configured".to_owned(),
@@ -169,7 +164,7 @@ fn build_global_scripts(pre_request_len: usize, test_len: usize) -> Element<'sta
             .size(9).color(Palette::text_subtle()),
         Space::new().height(8),
         row![
-            text(status).size(11).color(Palette::text_muted()),
+            tree_label(status, 11.0, content_width - 100.0),
             Space::new().width(Length::Fill),
             button(text("Edit").size(11).color(Palette::text()))
                 .on_press(Message::Settings(SettingsMsg::OpenGlobalScriptsModal))
@@ -225,68 +220,26 @@ fn build_header() -> Element<'static, Message> {
     .into()
 }
 
-fn build_profile(
-    avatar_handle: Option<image::Handle>,
-    github_username: String,
-    github_email: String,
-    github_website: String,
-) -> Element<'static, Message> {
+/// Compact project card: links to the org repo + issue tracker. Replaces
+/// the old personal-profile card — no avatar download, no PII in state.
+fn build_about(content_width: f32) -> Element<'static, Message> {
     let accent = Palette::accent();
-    let accent_dim = Color { r: accent.r * 0.62, g: accent.g * 0.62, b: accent.b * 0.63, a: 1.0 };
-
-    let avatar: Element<'static, Message> = if let Some(handle) = avatar_handle {
-        container(image(handle).width(36).height(36).content_fit(iced::ContentFit::Cover))
-            .style(move |_| iced::widget::container::Style {
-                border: Border { color: accent, width: 2.0, radius: 18.0.into() },
-                ..Default::default()
-            })
-            .width(36)
-            .height(36)
-            .into()
-    } else {
-        let initials: String = github_username
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|p| !p.is_empty())
-            .take(2)
-            .map(|p| p.chars().next().unwrap_or('A').to_uppercase().next().unwrap_or('A'))
-            .collect();
-        let display = if initials.is_empty() { "AC".to_string() } else { initials };
-        container(text(display).size(13).color(accent))
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(accent_dim)),
-                border: Border { color: accent, width: 1.5, radius: 18.0.into() },
-                ..Default::default()
-            })
-            .width(36)
-            .height(36)
-            .center_x(36)
-            .center_y(36)
-            .into()
-    };
-
-    let github_url = format!("https://github.com/{}", github_username);
-    let website_url = if github_website.starts_with("http") {
-        github_website.clone()
-    } else {
-        format!("https://{}", github_website)
-    };
-    let email_url = format!("mailto:{}", github_email);
-
     column![
-        section_label("MADE BY"),
-        row![
-            button(avatar)
-                .on_press(Message::App(AppMsg::OpenUrl(github_url.clone())))
-                .style(|_t, _s| iced::widget::button::Style { background: None, ..Default::default() })
-                .padding(0),
-            text(github_username.clone()).size(13).color(Palette::text()),
-        ]
-        .spacing(10)
-        .align_y(iced::Alignment::Center),
-        text("Socials").size(10).color(Palette::text_subtle()),
-        full_link_row("GitHub", format!("github.com/{}", github_username), github_url, accent),
-        full_link_row("Site", github_website.clone(), website_url, accent),
-        full_link_row("Email", github_email.clone(), email_url, accent),
+        section_label("RUSTMAN"),
+        full_link_row(
+            "GitHub",
+            "rust-man-org/rustman".to_owned(),
+            "https://github.com/rust-man-org/rustman".to_owned(),
+            accent,
+            content_width,
+        ),
+        full_link_row(
+            "Issues",
+            "Report a bug".to_owned(),
+            "https://github.com/rust-man-org/rustman/issues".to_owned(),
+            accent,
+            content_width,
+        ),
     ]
     .spacing(6)
     .into()
@@ -364,13 +317,13 @@ fn swatch(color: Color) -> Element<'static, Message> {
         .into()
 }
 
-fn build_layout(horizontal: bool) -> Element<'static, Message> {
+fn build_layout(horizontal: bool, content_width: f32) -> Element<'static, Message> {
     let options = [("Top / Bottom", false), ("Left / Right", true)];
 
-    let mut row_el = row![section_label("LAYOUT")].spacing(6);
+    let mut buttons = Vec::new();
     for (label, is_horizontal) in options {
         let selected = horizontal == is_horizontal;
-        row_el = row_el.push(
+        buttons.push(
             container(
                 button(
                     text(label).size(TEXT_SM).color(if selected {
@@ -402,13 +355,28 @@ fn build_layout(horizontal: bool) -> Element<'static, Message> {
                 .padding([6, 10])
                 .width(Length::Fill),
             )
-            .width(Length::FillPortion(1)),
+            .width(Length::Fill),
         );
     }
-    row_el.into()
+    // Side-by-side needs ~95px per button ("Left / Right" ≈ 72px text +
+    // padding); below that the labels wrap inside the buttons and the row
+    // grows ragged. Stack vertically instead.
+    let mut col = column![section_label("LAYOUT")].spacing(6);
+    if content_width >= 230.0 {
+        let mut row_el = row![].spacing(6);
+        for b in buttons {
+            row_el = row_el.push(b);
+        }
+        col = col.push(row_el);
+    } else {
+        for b in buttons {
+            col = col.push(b);
+        }
+    }
+    col.into()
 }
 
-fn build_updates(update: &UpdateState) -> Element<'static, Message> {
+fn build_updates(update: &UpdateState, content_width: f32) -> Element<'static, Message> {
     let (status, status_color) = match update {
         UpdateState::Idle => ("Checked automatically on launch".to_owned(), Palette::text_subtle()),
         UpdateState::Checking => ("Checking…".to_owned(), Palette::text_muted()),
@@ -435,16 +403,18 @@ fn build_updates(update: &UpdateState) -> Element<'static, Message> {
         check = check.on_press(Message::Update(UpdateMsg::Check));
     }
 
+    // Update errors carry network/HTTP details and can be long — truncate
+    // with a hover tooltip instead of wrapping the card taller.
     column![
         section_label("UPDATES"),
-        text(status).size(11).color(status_color),
+        tree_label_styled(status, 11.0, content_width - 36.0, None, status_color),
         check,
     ]
     .spacing(6)
     .into()
 }
 
-fn build_shortcuts() -> Element<'static, Message> {
+fn build_shortcuts(content_width: f32) -> Element<'static, Message> {
     let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
     let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt+" };
     let pairs: Vec<(String, &str)> = vec![
@@ -461,8 +431,21 @@ fn build_shortcuts() -> Element<'static, Message> {
         ("↑/↓".to_owned(), "Navigate"),
     ];
 
+    // Two columns need ~150px per half (key chip + description); below that
+    // the halves squeeze and descriptions wrap, stretching rows vertically.
+    // Stack single-file instead — always fits, no truncation needed.
+    let per_row = if content_width >= 330.0 { 2 } else { 1 };
+    // Description budget: cell width minus the key chip (~70px worst case)
+    // and spacing. Truncation here is graceful (ellipsis + hover), so the
+    // constants only need to be close, not exact.
+    let desc_avail = if per_row == 2 {
+        (content_width - 36.0) / 2.0 - 75.0
+    } else {
+        content_width - 107.0
+    };
+
     let mut grid = column![section_label("KEYBOARD SHORTCUTS")].spacing(4);
-    for chunk in pairs.chunks(2) {
+    for chunk in pairs.chunks(per_row) {
         let mut r = row![].spacing(4);
         for (key, desc) in chunk {
             r = r.push(
@@ -477,7 +460,7 @@ fn build_shortcuts() -> Element<'static, Message> {
                             ..Default::default()
                         })
                         .padding([2, 5]),
-                        text(*desc).size(10).color(Palette::text_muted()),
+                        tree_label((*desc).to_owned(), 10.0, desc_avail),
                     ]
                     .spacing(5)
                     .align_y(iced::Alignment::Center),
@@ -491,14 +474,65 @@ fn build_shortcuts() -> Element<'static, Message> {
     grid.into()
 }
 
-fn build_footer() -> Element<'static, Message> {
-    container(
-        text("Rustman · purely in Rust + iced")
-            .size(9)
-            .color(Palette::text_subtle()),
-    )
-    .padding(iced::Padding { top: 4.0, right: 12.0, bottom: 8.0, left: 12.0 })
-    .into()
+fn build_footer(creator_unlocked: bool, content_width: f32) -> Element<'static, Message> {
+    let accent = Palette::accent();
+    // The footer text is a button, but styled to look like plain text: three
+    // taps unlock the hidden creator card (see SettingsMsg::CreatorTapped).
+    let mut col = column![
+        button(
+            text("Rustman · purely in Rust + iced")
+                .size(9)
+                .color(Palette::text_subtle()),
+        )
+        .on_press(Message::Settings(SettingsMsg::CreatorTapped))
+        .style(|_t, _s| iced::widget::button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .padding(0),
+    ]
+    .spacing(6);
+    if creator_unlocked {
+        col = col.push(container(
+            column![
+                text("Built by Animesh — open to work & freelance gigs.")
+                    .size(10)
+                    .color(Palette::text()),
+                full_link_row(
+                    "GitHub",
+                    "animeshchaudhri".to_owned(),
+                    "https://github.com/animeshchaudhri".to_owned(),
+                    accent,
+                    content_width,
+                ),
+                full_link_row(
+                    "Email",
+                    "ac04@duck.com".to_owned(),
+                    "mailto:ac04@duck.com".to_owned(),
+                    accent,
+                    content_width,
+                ),
+                full_link_row(
+                    "Site",
+                    "animesh.us".to_owned(),
+                    "https://animesh.us".to_owned(),
+                    accent,
+                    content_width,
+                ),
+            ]
+            .spacing(4),
+        )
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Palette::surface_high())),
+            border: Border { color: Palette::border_subtle(), width: 1.0, radius: 8.0.into() },
+            ..Default::default()
+        })
+        .padding(10)
+        .width(Length::Fill));
+    }
+    container(col)
+        .padding(iced::Padding { top: 4.0, right: 12.0, bottom: 8.0, left: 12.0 })
+        .into()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -535,8 +569,16 @@ fn field_label(label: &'static str) -> Element<'static, Message> {
     text(label).size(10).color(Palette::text_subtle()).into()
 }
 
-/// A full-width row: label chip + clickable link text, guaranteed to not overflow.
-fn full_link_row(label: &'static str, display: String, url: String, accent: Color) -> Element<'static, Message> {
+/// A full-width row: label chip + clickable link text that truncates with a
+/// hover tooltip instead of overflowing. The button is Fill so the label
+/// inside clips at the row edge rather than sizing the row to its content.
+fn full_link_row(
+    label: &'static str,
+    display: String,
+    url: String,
+    accent: Color,
+    content_width: f32,
+) -> Element<'static, Message> {
     let accent_dim = Color { r: accent.r * 0.62, g: accent.g * 0.62, b: accent.b * 0.63, a: 1.0 };
     let chip_bg = Palette::surface_high();
     let chip_bd = Palette::border_subtle();
@@ -548,7 +590,7 @@ fn full_link_row(label: &'static str, display: String, url: String, accent: Colo
                 ..Default::default()
             })
             .padding([2, 6]),
-        button(text(display).size(11).color(accent))
+        button(tree_label_styled(display, 11.0, content_width - 100.0, None, accent))
             .on_press(Message::App(AppMsg::OpenUrl(url)))
             .style(move |_t, s| {
                 let hov = matches!(s, iced::widget::button::Status::Hovered);
@@ -559,7 +601,8 @@ fn full_link_row(label: &'static str, display: String, url: String, accent: Colo
                     ..Default::default()
                 }
             })
-            .padding([1, 4]),
+            .padding([1, 4])
+            .width(Length::Fill),
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center)

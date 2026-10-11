@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use crate::domain::{
     collection::{Collection, SavedRequest},
+    group::{ImportedCollection, ImportedGroup},
     request::{ApiKeyLocation, AuthType, BodyType, FormField, FormFieldType, HttpMethod, KeyValue},
 };
 
@@ -26,6 +27,7 @@ enum PostmanItem {
 
 #[derive(Deserialize)]
 struct PostmanFolder {
+    name: String,
     item: Vec<PostmanItem>,
 }
 
@@ -101,7 +103,7 @@ struct PostmanFormField {
 
 // ── Import ────────────────────────────────────────────────────────────────────
 
-pub fn import(json: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
     let col: PostmanCollection =
         serde_json::from_str(json).map_err(|e| format!("Invalid Postman JSON: {e}"))?;
 
@@ -111,21 +113,50 @@ pub fn import(json: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String
         created_at: chrono::Utc::now().timestamp_millis(),
     };
 
-    let reqs = flatten_items(&collection.id, &col.item);
-    Ok(vec![(collection, reqs)])
+    // Folders become groups so the imported tree matches what the user sees
+    // in Postman instead of being flattened into one long request list
+    // (issue #53).
+    let (requests, groups) = convert_items(&collection.id, &collection.id, true, 0, &col.item);
+    Ok(vec![ImportedCollection { collection, requests, groups }])
 }
 
-fn flatten_items(collection_id: &str, items: &[PostmanItem]) -> Vec<SavedRequest> {
-    let mut out = Vec::new();
-    for item in items {
+/// Convert a Postman item list into (direct request leaves, child groups)
+/// sharing one manual ordering sequence. `collection_id` is the root
+/// collection every leaf request belongs to, regardless of nesting depth.
+fn convert_items(
+    collection_id: &str,
+    parent_id: &str,
+    parent_is_collection: bool,
+    sort_order: i64,
+    items: &[PostmanItem],
+) -> (Vec<SavedRequest>, Vec<crate::domain::group::ImportedGroup>) {
+    let mut requests = Vec::new();
+    let mut groups = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let order = sort_order + i as i64;
         match item {
-            PostmanItem::Request(ri) => out.push(convert_request(collection_id, ri)),
+            PostmanItem::Request(ri) => {
+                let mut req = convert_request(collection_id, ri);
+                req.sort_order = order;
+                requests.push(req);
+            }
             PostmanItem::Folder(folder) => {
-                out.extend(flatten_items(collection_id, &folder.item))
+                let group_id = uuid::Uuid::new_v4().to_string();
+                let (child_reqs, child_groups) =
+                    convert_items(collection_id, &group_id, false, 0, &folder.item);
+                groups.push(crate::domain::group::ImportedGroup {
+                    id: group_id,
+                    parent_id: parent_id.to_owned(),
+                    parent_is_collection,
+                    name: folder.name.clone(),
+                    sort_order: order,
+                    requests: child_reqs,
+                    groups: child_groups,
+                });
             }
         }
     }
-    out
+    (requests, groups)
 }
 
 fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedRequest {
@@ -226,6 +257,8 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
     SavedRequest {
         id: uuid::Uuid::new_v4().to_string(),
         collection_id: collection_id.to_owned(),
+        group_id: None,
+        sort_order: 0,
         name: item.name.clone(),
         method,
         url,
@@ -254,12 +287,35 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-pub fn export(collection: &Collection, requests: &[SavedRequest]) -> String {
+pub fn export(imported: &ImportedCollection) -> String {
     use serde_json::{json, Value};
 
-    let items: Vec<Value> = requests
-        .iter()
-        .map(|req| {
+    let mut items: Vec<Value> = imported.groups.iter().map(export_group).collect();
+    items.extend(imported.requests.iter().map(export_request));
+
+    let col = json!({
+        "info": {
+            "_postman_id": imported.collection.id,
+            "name": imported.collection.name,
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": items,
+    });
+
+    serde_json::to_string_pretty(&col).unwrap_or_default()
+}
+
+/// One folder (with its requests and subfolders) as a Postman `item`.
+fn export_group(group: &ImportedGroup) -> serde_json::Value {
+    use serde_json::json;
+
+    let mut items: Vec<serde_json::Value> = group.groups.iter().map(export_group).collect();
+    items.extend(group.requests.iter().map(export_request));
+    json!({ "name": group.name, "item": items })
+}
+
+fn export_request(req: &SavedRequest) -> serde_json::Value {
+    use serde_json::{json, Value};
             let headers: Vec<Value> = req
                 .headers
                 .iter()
@@ -308,17 +364,4 @@ pub fn export(collection: &Collection, requests: &[SavedRequest]) -> String {
                     "body": body,
                 }
             })
-        })
-        .collect();
-
-    let col = json!({
-        "info": {
-            "_postman_id": collection.id,
-            "name": collection.name,
-            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        },
-        "item": items,
-    });
-
-    serde_json::to_string_pretty(&col).unwrap_or_default()
 }

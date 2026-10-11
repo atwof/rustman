@@ -10,6 +10,7 @@ use crate::{
     ui::{
         icons,
         theme::{Palette, MONO},
+        tree_label::{tree_label, tree_label_styled},
     },
 };
 
@@ -103,9 +104,15 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
 
     let mut status_row = row![].spacing(4).align_y(iced::Alignment::Center);
     status_row = status_row.push(icons::git_branch().size(11).color(Palette::text_muted()));
-    status_row = status_row.push(text(branch.clone()).size(11).color(Palette::text()).font(MONO));
-
-    status_row = status_row.push(Space::new().width(Length::Fill));
+    // Long branch names clip + popover instead of wrapping the row taller.
+    // The label is Fill so it right-aligns the status badge on its own.
+    status_row = status_row.push(tree_label_styled(
+        branch,
+        11.0,
+        state.sidebar_width - 115.0,
+        Some(MONO),
+        Palette::text(),
+    ));
 
     if changes > 0 {
         status_row = status_row.push(
@@ -193,8 +200,13 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
         let row = button(
             row![
                 text("\u{25CF}").size(9).color(if is_current { Palette::accent() } else { Palette::text_subtle() }),
-                text(&b.name).size(11).color(if is_current { Palette::text() } else { Palette::text_muted() }),
-                Space::new().width(Length::Fill),
+                tree_label_styled(
+                    b.name.clone(),
+                    11.0,
+                    state.sidebar_width - 70.0,
+                    Some(MONO),
+                    if is_current { Palette::text() } else { Palette::text_muted() },
+                ),
             ]
             .spacing(5)
             .align_y(iced::Alignment::Center),
@@ -289,8 +301,7 @@ fn changes_card(state: &AppState) -> Element<'_, Message> {
                 button(
                     row![
                         badge(st),
-                        text(name).size(12).color(Palette::text()),
-                        Space::new().width(Length::Fill),
+                        tree_label(name, 12.0, state.sidebar_width - 80.0),
                     ]
                     .spacing(6)
                     .align_y(iced::Alignment::Center),
@@ -306,9 +317,16 @@ fn changes_card(state: &AppState) -> Element<'_, Message> {
     }
 
     if let Some(diff) = &state.git_diff {
+        // Long diff lines scroll horizontally instead of wrapping: wrapping
+        // code destroys alignment and stretches the panel. The panel scrolls
+        // vertically; this box scrolls both ways.
         let diff_container = container(
             scrollable(text(diff.clone()).size(10).font(MONO).color(Palette::text_muted()))
                 .height(160)
+                .direction(iced::widget::scrollable::Direction::Both {
+                    vertical: crate::ui::theme::grabbable_scrollbar(),
+                    horizontal: crate::ui::theme::grabbable_scrollbar(),
+                })
                 .style(crate::ui::theme::hidden_scrollbar),
         )
         .padding([6, 8])
@@ -405,16 +423,15 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
                 last_date_group = date_group;
             }
 
-            // Single-line commit: ● message • hash • time ago
+            // Single-line commit: ● message • hash • time ago. The message
+            // clips + popover instead of wrapping; the row is too dense for
+            // long messages at narrow widths either way.
             let row = container(
                 row![
                     column![text("\u{25CF}").size(8).color(Palette::accent())]
                         .width(14)
                         .align_x(iced::alignment::Horizontal::Center),
-                    column![
-                        text(truncate_chars(&msg_first_line, 50)).size(11).color(Palette::text()),
-                    ]
-                    .width(Length::Fill),
+                    tree_label(msg_first_line, 11.0, state.sidebar_width - 160.0),
                     text(hash).size(8).color(Palette::accent()).font(MONO),
                     text(format!(" \u{00B7} {}", time_ago(commit.timestamp, now)))
                         .size(8)
@@ -469,9 +486,12 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
             } else {
                 text("\u{25CB}").size(10).color(Palette::text_subtle())
             },
-            text(&repo.name).size(11).color(Palette::text()),
-            text(branch).size(9).color(Palette::text_subtle()).font(MONO),
-            Space::new().width(Length::Fill),
+            tree_label(repo.name.clone(), 11.0, state.sidebar_width - 140.0),
+            // Shrink-sized: short branches cost nothing, long ones clip at
+            // the panel edge instead of wrapping. Single-line either way.
+            text(branch).size(9).color(Palette::text_subtle()).font(MONO).wrapping(
+                iced_core::text::Wrapping::None,
+            ),
         ]
         .spacing(5)
         .align_y(iced::Alignment::Center);
@@ -539,24 +559,6 @@ fn pretty_name(state: &AppState, path: &str) -> String {
         .find(|c| c.id == id)
         .map(|c| c.name.clone())
         .unwrap_or_else(|| path.to_owned())
-}
-
-/// Truncates to at most `max` **characters**, appending an ellipsis.
-///
-/// This must not slice by byte index. `str` indexing is byte-based, so
-/// `&msg[..47]` panics whenever byte 47 falls inside a multi-byte UTF-8
-/// sequence — i.e. for any commit message containing an emoji, CJK text or an
-/// accented character. The crate is built with `panic = "abort"`, so that was
-/// an instant, unrecoverable crash of the whole app triggered purely by
-/// *rendering* the Git panel.
-fn truncate_chars(text: &str, max: usize) -> String {
-    let mut chars = text.chars();
-    let head: String = chars.by_ref().take(max).collect();
-    if chars.next().is_some() {
-        format!("{head}...")
-    } else {
-        head
-    }
 }
 
 /// Case-insensitive substring test that allocates nothing.
@@ -769,7 +771,7 @@ fn repo_row_style(status: iced::widget::button::Status, active: bool) -> iced::w
 
 #[cfg(test)]
 mod tests {
-    use super::{contains_ignore_case, truncate_chars};
+    use super::contains_ignore_case;
 
     #[test]
     fn search_matches_case_insensitively() {
@@ -803,46 +805,5 @@ mod tests {
                 "mismatch for {haystack:?} / {needle:?}"
             );
         }
-    }
-
-    #[test]
-    fn truncate_leaves_short_text_alone() {
-        assert_eq!(truncate_chars("fix: typo", 50), "fix: typo");
-    }
-
-    #[test]
-    fn truncate_adds_ellipsis_past_the_limit() {
-        let long = "a".repeat(60);
-        let out = truncate_chars(&long, 50);
-        assert_eq!(out.chars().count(), 53); // 50 + "..."
-        assert!(out.ends_with("..."));
-    }
-
-    #[test]
-    fn truncate_at_exact_limit_has_no_ellipsis() {
-        let exact = "b".repeat(50);
-        assert_eq!(truncate_chars(&exact, 50), exact);
-    }
-
-    /// The crash this replaced: slicing `&text[..47]` panics when byte 47 is
-    /// not a char boundary. With `panic = "abort"` that killed the whole app
-    /// just by drawing the Git panel.
-    #[test]
-    fn truncate_does_not_panic_on_multibyte_text() {
-        for text in [
-            "🎉".repeat(60),
-            "日本語のコミットメッセージ".repeat(8),
-            "café ".repeat(20),
-            "🚀 fix: ünïcödé commit with emoji 🎉 and more text to overflow".to_owned(),
-        ] {
-            let out = truncate_chars(&text, 50);
-            assert!(out.chars().count() <= 53);
-        }
-    }
-
-    #[test]
-    fn truncate_keeps_characters_intact() {
-        let out = truncate_chars(&"🎉".repeat(60), 50);
-        assert_eq!(out.chars().filter(|c| *c == '🎉').count(), 50);
     }
 }

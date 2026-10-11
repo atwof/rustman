@@ -38,6 +38,16 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
             return tab.response_editor.update(&msg)
                 .map(|m| Message::Response(ResponseMsg::ViewerEdited(m)));
         }
+        ResponseMsg::ViewerPagePrev => {
+            let tab = state.tabs.active_tab_mut();
+            let page = tab.viewer_page.saturating_sub(1);
+            tab.show_viewer_page(page);
+        }
+        ResponseMsg::ViewerPageNext => {
+            let tab = state.tabs.active_tab_mut();
+            let page = (tab.viewer_page + 1).min(tab.viewer_page_count().saturating_sub(1));
+            tab.show_viewer_page(page);
+        }
         ResponseMsg::ConsoleEdited(action) => {
             let tab = state.tabs.active_tab_mut();
             tab.console_editor.perform(action);

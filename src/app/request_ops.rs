@@ -121,6 +121,8 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
     let req = SavedRequest {
         id: tab.id.clone(),
         collection_id: String::new(),
+        group_id: None, // a sent request is self-contained; group membership lives in the saved copy
+        sort_order: 0,
         name: tab.title.clone(),
         method: tab.method.clone(),
         url: tab.url.clone(),
@@ -167,12 +169,42 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
 
 pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
     let tab = state.tabs.active_tab();
+    let req_id = tab.saved_as.as_ref().map(|(_, id)| id.clone())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let collection_id = tab.saved_as.as_ref().map(|(col, _)| col.clone())
+        .or_else(|| state.collections.first().map(|c| c.id.clone()))
+        .unwrap_or_default();
+
+    // Re-saving an existing request must keep its folder and position —
+    // the dialog fields are only meaningful for a first-time save, and may
+    // hold leftovers from another tab's dialog.
+    let existing_placement = state
+        .requests
+        .values()
+        .flatten()
+        .find(|r| r.id == req_id)
+        .map(|r| (r.group_id.clone(), r.sort_order));
+    let (group_id, sort_order) = match existing_placement {
+        Some(placement) => placement,
+        None => {
+            let group_id = state.save_dialog_group_id.clone();
+            let parent_id = group_id.as_deref().unwrap_or(&collection_id);
+            let order = state
+                .requests
+                .get(&collection_id)
+                .map(|reqs| {
+                    crate::app::tree::next_request_order(reqs, parent_id, group_id.is_none())
+                })
+                .unwrap_or(0);
+            (group_id, order)
+        }
+    };
+
     let req = SavedRequest {
-        id: tab.saved_as.as_ref().map(|(_, id)| id.clone())
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-        collection_id: tab.saved_as.as_ref().map(|(col, _)| col.clone())
-            .or_else(|| state.collections.first().map(|c| c.id.clone()))
-            .unwrap_or_default(),
+        id: req_id,
+        collection_id,
+        group_id,
+        sort_order,
         name: tab.title.clone(),
         method: tab.method.clone(),
         url: tab.url.clone(),
@@ -244,6 +276,29 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
 
     state.tabs.active_tab_mut().modified = false;
     state.status_message = Some("Saved!".to_owned());
+    // Make the saved request visible in the tree.
+    let (saved_id, saved_col, saved_group) = state
+        .requests
+        .values()
+        .flatten()
+        .find(|r| Some(r.id.as_str()) == state.tabs.active_tab().saved_as.as_ref().map(|(_, id)| id.as_str()))
+        .map(|r| (r.id.clone(), r.collection_id.clone(), r.group_id.clone()))
+        .unwrap_or_default();
+    state.sidebar.selected_request = Some(saved_id);
+    if let Some(gid) = saved_group {
+        let mut current = gid;
+        loop {
+            state.sidebar.expanded.insert(current.clone());
+            let Some(g) = state.groups.iter().find(|g| g.id == current) else { break };
+            if g.parent_is_collection {
+                state.sidebar.expanded.insert(g.parent_id.clone());
+                break;
+            }
+            current = g.parent_id.clone();
+        }
+    } else {
+        state.sidebar.expanded.insert(saved_col);
+    }
     Task::none()
 }
 
@@ -255,6 +310,8 @@ pub(crate) fn saved_request_from_tab(
     SavedRequest {
         id,
         collection_id,
+        group_id: None,
+        sort_order: 0,
         name: tab.title.clone(),
         method: tab.method.clone(),
         url: tab.url.clone(),

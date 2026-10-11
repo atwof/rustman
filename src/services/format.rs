@@ -17,3 +17,345 @@ pub fn pretty_value(value: &serde_json::Value, use_tabs: bool) -> Option<String>
         serde_json::to_string_pretty(value).ok()
     }
 }
+
+/// Best-effort readable text from an HTML body, for builds without the
+/// `webview` feature — tag soup is unreadable and no real preview exists, so
+/// this middle ground keeps something useful on screen.
+///
+/// Single pass with no allocations beyond the output: `<script>`, `<style>`
+/// and comments are dropped; block tags break lines; links keep their target
+/// in parens; entities (named, decimal, hex) are decoded; runs of spaces
+/// collapse the way a browser would. Always whole chars — never slices.
+///
+/// Only called in builds without the `webview` feature (see
+/// `webview::html_fallback_for`); the allow keeps default builds quiet.
+#[cfg_attr(feature = "webview", allow(dead_code))]
+pub fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len().min(512_000));
+    let mut chars = html.chars().peekable();
+    // Tag whose raw content is being skipped (`script`/`style`), if any.
+    let mut skipping: Option<bool> = None; // true = script, false = style
+    // Hrefs of open `<a>` tags (browsers forbid nesting; the stack is
+    // paranoia for malformed pages).
+    let mut links: Vec<String> = Vec::new();
+
+    while let Some(c) = chars.next() {
+        if c != '<' {
+            if skipping.is_some() {
+                continue;
+            }
+            if c == '&' {
+                push_entity(&mut chars, &mut out);
+            } else if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+                // Collapse whitespace runs like a renderer would (outside
+                // `<pre>`, which API responses effectively never use).
+                if !out.ends_with([' ', '\n']) {
+                    out.push(' ');
+                }
+            } else {
+                out.push(c);
+            }
+            continue;
+        }
+
+        // Inside skipped content only the matching close tag matters.
+        if skipping.is_some() {
+            let want = if skipping == Some(true) { "script" } else { "style" };
+            let is_close = chars.peek() == Some(&'/');
+            if is_close {
+                chars.next();
+            }
+            let mut tok = String::new();
+            while let Some(&p) = chars.peek() {
+                if p.is_ascii_alphanumeric() {
+                    tok.push(p);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if is_close && tok.eq_ignore_ascii_case(want) {
+                skipping = None;
+                for p in chars.by_ref() {
+                    if p == '>' {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Only `/name`, `name`, `!directive` and `?pi` can open a tag; a bare
+        // `<` before anything else (space, digit, emoji…) is literal text.
+        // Without this, `1 < 2` swallows everything up to the next `>`.
+        match chars.peek() {
+            Some(&'/') | Some(&'!') | Some(&'?') => {}
+            Some(c) if c.is_ascii_alphabetic() => {}
+            _ => {
+                out.push('<');
+                continue;
+            }
+        }
+
+        // Comment or doctype: `<!-- ... -->`, `<!DOCTYPE ...>`.
+        if chars.peek() == Some(&'!') {
+            chars.next();
+            if chars.peek() == Some(&'-') {
+                chars.next();
+                if chars.peek() == Some(&'-') {
+                    chars.next();
+                    skip_until(&mut chars, "-->");
+                    continue;
+                }
+            }
+            skip_until(&mut chars, ">");
+            continue;
+        }
+        if chars.peek() == Some(&'?') {
+            chars.next();
+            skip_until(&mut chars, ">");
+            continue;
+        }
+
+        // Collect the raw tag up to its unquoted '>'. Attribute parsing
+        // happens on the string afterwards, where token boundaries are
+        // obvious — an incremental machine kept misrouting values.
+        let mut raw = String::new();
+        let mut in_quote = None;
+        for p in chars.by_ref() {
+            if let Some(q) = in_quote {
+                raw.push(p);
+                if p == q {
+                    in_quote = None;
+                }
+                continue;
+            }
+            match p {
+                '"' | '\'' => {
+                    in_quote = Some(p);
+                    raw.push(p);
+                }
+                '>' => break,
+                _ => raw.push(p),
+            }
+        }
+        let closing = raw.starts_with('/');
+        let body = raw.trim_start_matches('/');
+        let name_end =
+            body.find(|c: char| c.is_whitespace() || c == '/').unwrap_or(body.len());
+        let tag = body[..name_end].to_ascii_lowercase();
+
+        if !closing && (tag == "script" || tag == "style") {
+            skipping = Some(tag == "script");
+            continue;
+        }
+        if !closing && tag == "a" {
+            links.push(extract_href(&body[name_end..]));
+        }
+        handle_tag_end(&tag, closing, &mut links, &mut out);
+    }
+
+    // Collapse 3+ newlines (block open + close each emit one) and trim.
+    let mut collapsed = String::with_capacity(out.len());
+    let mut newlines = 0;
+    for c in out.chars() {
+        if c == '\n' {
+            newlines += 1;
+            if newlines <= 2 {
+                collapsed.push(c);
+            }
+        } else {
+            newlines = 0;
+            collapsed.push(c);
+        }
+    }
+    collapsed.trim().to_owned()
+}
+
+/// The `href` value from a tag's attribute text (`<a ...>` remainder),
+/// tolerant of quoting and spacing (`href="u"`, `href='u'`, `href=u`,
+/// `href = "u"`). Empty when absent. Only standalone `href` matches, so
+/// `data-href` and `hrefx` are ignored.
+fn extract_href(rest: &str) -> String {
+    let toks: Vec<&str> = rest.split_whitespace().collect();
+    let mut i = 0;
+    while i < toks.len() {
+        let t = toks[i];
+        let is_href =
+            t.get(..4).is_some_and(|h| h.eq_ignore_ascii_case("href"));
+        if !is_href {
+            i += 1;
+            continue;
+        }
+        match t[4..].chars().next() {
+            // Bare `href`: the value follows `=`.
+            None => {
+                if toks.get(i + 1) == Some(&"=") {
+                    let val = toks.get(i + 2).copied().unwrap_or("");
+                    return strip_quotes(val).to_owned();
+                }
+                return String::new();
+            }
+            Some(c) if c == '=' || c.is_whitespace() => {
+                let mut v = t[4..].trim_start_matches(['=', ' ', '\t']);
+                if v.is_empty() {
+                    // `href = "u"`: value lives in later tokens.
+                    i += 1;
+                    v = toks.get(i).copied().unwrap_or("");
+                    if v == "=" {
+                        i += 1;
+                        v = toks.get(i).copied().unwrap_or("");
+                    }
+                }
+                return strip_quotes(v).to_owned();
+            }
+            // `hrefx=...` and friends: not our attribute.
+            _ => return String::new(),
+        }
+    }
+    String::new()
+}
+
+fn strip_quotes(v: &str) -> &str {
+    let b = v.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        &v[1..v.len() - 1]
+    } else {
+        v
+    }
+}
+fn handle_tag_end(tag: &str, closing: bool, links: &mut Vec<String>, out: &mut String) {
+    match tag {
+        "br" => out.push('\n'),
+        "a" if closing => {
+            if let Some(href) = links.pop() {
+                if !href.is_empty() {
+                    out.push_str(" (");
+                    out.push_str(&href);
+                    out.push(')');
+                }
+            }
+        }
+        "li" if !closing => out.push_str("\n• "),
+        "p" | "div" | "section" | "article" | "header" | "footer" | "main" | "nav"
+        | "ul" | "ol" | "table" | "tr" | "blockquote" | "form" | "hr" | "pre" | "dd"
+        | "dt" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => out.push('\n'),
+        _ => {}
+    }
+}
+
+/// Skip chars until (and including) the `pat` terminator.
+fn skip_until(chars: &mut std::iter::Peekable<std::str::Chars>, pat: &str) {
+    let mut window = String::new();
+    for c in chars.by_ref() {
+        window.push(c);
+        if window.len() > pat.len() {
+            window.remove(0);
+        }
+        if window == pat {
+            break;
+        }
+    }
+}
+
+/// Decode one `&...;` entity (caller already consumed `&`). An unterminated
+/// `&foo` (no `;`) is emitted literally, terminator included when present.
+fn push_entity(chars: &mut std::iter::Peekable<std::str::Chars>, out: &mut String) {
+    let mut entity = String::new();
+    let mut terminated = false;
+    for c in chars.by_ref() {
+        if c == ';' {
+            terminated = true;
+            break;
+        }
+        entity.push(c);
+        if entity.len() > 10 {
+            break;
+        }
+    }
+    let decoded = match entity.as_str() {
+        "amp" => Some("&".to_owned()),
+        "lt" => Some("<".to_owned()),
+        "gt" => Some(">".to_owned()),
+        "quot" => Some("\"".to_owned()),
+        "apos" | "#39" => Some("'".to_owned()),
+        "nbsp" => Some(" ".to_owned()),
+        _ if entity.starts_with("#x") || entity.starts_with("#X") => {
+            u32::from_str_radix(entity.trim_start_matches(['#', 'x', 'X']), 16)
+                .ok()
+                .and_then(char::from_u32)
+                .map(|c| c.to_string())
+        }
+        _ if entity.starts_with('#') => {
+            entity[1..].parse::<u32>().ok().and_then(char::from_u32).map(|c| c.to_string())
+        }
+        _ => None,
+    };
+    match decoded {
+        Some(s) => out.push_str(&s),
+        None => {
+            out.push('&');
+            out.push_str(&entity);
+            if terminated {
+                out.push(';');
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod html_tests {
+    use super::*;
+
+    #[test]
+    fn drops_script_style_and_comments() {
+        let html = "<html><head><style>.a{color:red}</style><script>alert(1)</script></head>\
+            <body><!-- hidden -->Hello</body></html>";
+        assert_eq!(html_to_text(html), "Hello");
+    }
+
+    #[test]
+    fn blocks_break_lines_and_links_keep_targets() {
+        let html = "<div>First</div><p>Click <a href=\"https://x.test/y\">here</a> now</p>";
+        let text = html_to_text(html);
+        assert!(text.contains("First"), "{text:?}");
+        assert!(text.contains("here (https://x.test/y)"), "{text:?}");
+    }
+
+    #[test]
+    fn decodes_entities() {
+        assert_eq!(html_to_text("<p>a &amp; b &lt;c&gt; &#65; &#x41; &unknown;</p>"), "a & b <c> A A &unknown;");
+    }
+
+    #[test]
+    fn bare_angle_bracket_is_literal() {
+        assert_eq!(html_to_text("<p>1 < 2</p>"), "1 < 2");
+    }
+
+    #[test]
+    fn unclosed_tag_at_eof_does_not_hang_or_panic() {
+        let text = html_to_text("<div>oops<span>no close");
+        assert!(text.contains("oops"), "{text:?}");
+    }
+
+    #[test]
+    fn href_parsing_tolerates_spacing_and_quoting() {
+        for (tag, want) in [
+            ("<a href=\"https://x.test/a\">t</a>", "t (https://x.test/a)"),
+            ("<a href='https://x.test/b'>t</a>", "t (https://x.test/b)"),
+            ("<a href=https://x.test/c>t</a>", "t (https://x.test/c)"),
+            ("<a href = \"https://x.test/d\">t</a>", "t (https://x.test/d)"),
+            ("<a data-href=\"https://x.test/nope\">t</a>", "t"),
+            ("<a>bare</a>", "bare"),
+        ] {
+            assert_eq!(html_to_text(tag), want, "for {tag:?}");
+        }
+    }
+
+    #[test]
+    fn directives_and_unclosed_skip_do_not_swallow_text() {
+        assert_eq!(html_to_text("<?xml version=\"1.0\"?><p>hi</p>"), "hi");
+        // Unclosed script: rest is code, but preceding text survives.
+        assert_eq!(html_to_text("<p>before</p><script>alert(1)"), "before");
+    }
+}

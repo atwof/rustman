@@ -36,6 +36,8 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                     request: crate::domain::collection::SavedRequest {
                         id: tab.id.clone(),
                         collection_id: String::new(),
+                        group_id: None, // history entries stand alone; group membership lives in the saved request
+                        sort_order: 0,
                         name: tab.title.clone(),
                         method: tab.method.clone(),
                         url: tab.url.clone(),
@@ -222,6 +224,10 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                     if let Some(t) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                         t.parsed_json = Some(cached_clone);
                         t.set_viewer_content(&display, true);
+                        t.html_fallback_text = t
+                            .response
+                            .as_ref()
+                            .and_then(crate::services::webview::html_fallback_for);
                         t.viewer_processing = false;
                         t.jobs.cancel(JobKind::Parse);
                     }
@@ -268,9 +274,6 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 );
             }
         }
-        AppMsg::AvatarLoaded(bytes) => {
-            state.profile_avatar = Some(iced::widget::image::Handle::from_bytes(bytes));
-        }
         AppMsg::ViewerReady { generation, tab_id, content_text, parsed_json } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                 if tab.jobs.is_current(JobKind::Parse, generation) {
@@ -280,6 +283,10 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                     }
                     tab.parsed_json = parsed_json.map(|b| *b);
                     tab.set_viewer_content(&content_text, is_json);
+                    tab.html_fallback_text = tab
+                        .response
+                        .as_ref()
+                        .and_then(crate::services::webview::html_fallback_for);
                     tab.viewer_processing = false;
                 }
             }

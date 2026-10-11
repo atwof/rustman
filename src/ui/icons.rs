@@ -28,6 +28,8 @@ pub fn import() -> Text<'static> { glyph('\u{e0b2}') } // download
 pub fn export() -> Text<'static> { glyph('\u{e19e}') } // upload
 pub fn search() -> Text<'static> { glyph('\u{e151}') } // search
 pub fn plus() -> Text<'static> { glyph('\u{e13d}') } // plus
+pub fn folder() -> Text<'static> { glyph('\u{e0d7}') } // folder
+pub fn folder_plus() -> Text<'static> { glyph('\u{e0d9}') } // folder-plus
 pub fn send() -> Text<'static> { glyph('\u{e152}') } // send
 pub fn curl() -> Text<'static> { glyph('\u{e245}') }
 pub fn eye() -> Text<'static> { glyph('\u{e0ba}') }

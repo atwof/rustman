@@ -290,6 +290,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 let name = if tab.url.is_empty() { tab.title.clone() } else { tab.url.clone() };
                 state.save_dialog_name = name;
                 state.save_dialog_collection_id = state.collections.first().map(|c| c.id.clone());
+                state.save_dialog_group_id = None;
                 state.save_dialog_open = true;
                 return Task::none();
             }

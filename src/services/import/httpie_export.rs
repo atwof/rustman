@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::domain::{
     collection::{Collection, SavedRequest},
+    group::ImportedCollection,
     request::{BodyType, HttpMethod, KeyValue},
 };
 
@@ -24,7 +25,7 @@ struct HttpieRequest {
     body_type: Option<String>,
 }
 
-pub fn import(json: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
     let export: HttpieExport =
         serde_json::from_str(json).map_err(|e| format!("Not a valid HTTPie export: {e}"))?;
 
@@ -92,5 +93,5 @@ pub fn import(json: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String
         req.collection_id = col_id.clone();
     }
 
-    Ok(vec![(collection, requests)])
+    Ok(vec![ImportedCollection { collection, requests, groups: Vec::new() }])
 }

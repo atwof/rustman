@@ -5,7 +5,7 @@ use iced::Task;
 
 use crate::{
     domain::collection::SavedRequest,
-    message::{AppMsg, Message},
+    message::Message,
     services::storage,
     state::{session::AppSession, sidebar::SidebarState, tabs::TabManager},
 };
@@ -27,6 +27,11 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     let history = db
         .as_ref()
         .and_then(|c| storage::get_history(c).ok())
+        .unwrap_or_default();
+
+    let groups = db
+        .as_ref()
+        .and_then(|c| storage::get_groups(c).ok())
         .unwrap_or_default();
 
     let mut environments = db
@@ -54,12 +59,14 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     let mut default_timeout_ms = 30_000u64;
     let mut global_pre_request_script = String::new();
     let mut global_test_script = String::new();
+    let mut sidebar_width = 200.0;
     let mut tls_options = crate::services::http::TlsOptions::default();
     if let Some(sess) = session {
         theme_idx = sess.theme_idx;
         default_timeout_ms = sess.default_timeout_ms;
         global_pre_request_script = sess.global_pre_request_script.clone();
         global_test_script = sess.global_test_script.clone();
+        sidebar_width = sess.sidebar_width;
         tls_options = crate::services::http::TlsOptions {
             accept_invalid_certs: sess.tls_accept_invalid_certs,
             http1_only: sess.tls_http1_only,
@@ -131,6 +138,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         tabs,
         sidebar,
         collections,
+        groups,
         requests,
         history,
         environments,
@@ -145,12 +153,14 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         palette_open: false,
         palette_query: String::new(),
         palette_selected: 0,
-        profile_avatar: None,
+        creator_taps: 0,
+        creator_unlocked: false,
         parsed_cache: crate::services::cache::ParsedBodyCache::default(),
         export_dialog_collection: None,
         save_dialog_open: false,
         save_dialog_name: String::new(),
         save_dialog_collection_id: None,
+        save_dialog_group_id: None,
         save_dialog_new_col: false,
         save_dialog_new_col_name: String::new(),
         git_log: Vec::new(),
@@ -167,9 +177,6 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         git_clone_url: String::new(),
         curl_modal_open: false,
         curl_modal_command: String::new(),
-        github_username: String::from("animeshchaudhri"),
-        github_email: String::from("ac04@duck.com"),
-        github_website: String::from("animesh.us"),
         git_history_search: String::new(),
         git_user_name: git_identity
             .as_ref()
@@ -180,6 +187,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
             .unwrap_or_default(),
         theme_idx,
         panel_split: 50,
+        sidebar_width,
         horizontal_layout: false,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,
@@ -192,20 +200,6 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         session_dirty: false,
     };
 
-    let avatar_task = Task::perform(
-        async move {
-            match reqwest::get("https://avatars.githubusercontent.com/animeshchaudhri").await {
-                Ok(resp) if resp.status().is_success() => resp.bytes().await.ok().map(|b| b.to_vec()),
-                _ => None,
-            }
-        },
-        |bytes| match bytes {
-            Some(data) => Message::App(AppMsg::AvatarLoaded(data)),
-            None => Message::App(AppMsg::Noop),
-        },
-    );
-
- 
     let update_task = Task::perform(
         crate::services::update::check(),
         |res| match res {
@@ -214,7 +208,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         },
     );
 
-    (state, Task::batch([avatar_task, update_task]))
+    (state, update_task)
 }
 
 fn parse_sidebar_panel(s: &str) -> crate::message::SidebarPanel {

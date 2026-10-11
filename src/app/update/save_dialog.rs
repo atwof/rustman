@@ -14,8 +14,15 @@ pub(super) fn handle(state: &mut AppState, msg: SaveDialogMsg) -> Task<Message> 
             state.save_dialog_new_col_name = String::new();
         }
         SaveDialogMsg::NameChanged(s) => state.save_dialog_name = s,
-        SaveDialogMsg::CollectionSelected(id) => {
-            state.save_dialog_collection_id = Some(id);
+        SaveDialogMsg::ParentSelected(id) => {
+            // The picker lists collections and folders; resolve which kind
+            // was picked so the request lands in the right parent.
+            if state.groups.iter().any(|g| g.id == id) {
+                state.save_dialog_group_id = Some(id);
+            } else {
+                state.save_dialog_group_id = None;
+                state.save_dialog_collection_id = Some(id);
+            }
             state.save_dialog_new_col = false;
         }
         SaveDialogMsg::ToggleNewCollection => {
@@ -45,6 +52,16 @@ pub(super) fn handle(state: &mut AppState, msg: SaveDialogMsg) -> Task<Message> 
                 state.save_dialog_collection_id = Some(new_col_id);
                 state.save_dialog_new_col = false;
                 state.save_dialog_new_col_name = String::new();
+            }
+
+            // A picked folder implies its root collection; resolve it here so
+            // `save_request` only has to read the two dialog fields.
+            if let Some(gid) = state.save_dialog_group_id.clone() {
+                if let Some(root) = crate::app::tree::root_collection_of(&state.groups, &gid) {
+                    state.save_dialog_collection_id = Some(root);
+                } else {
+                    state.save_dialog_group_id = None;
+                }
             }
 
             let col_id = state

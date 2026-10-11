@@ -88,10 +88,23 @@ pub struct RequestTabState {
     pub body_indent_tabs: bool,
     pub response_editor: CodeEditor,
     pub response_viewer_lines: usize,
-    /// `Some(full_len)` when the body shown in `response_editor` is only a
-    /// prefix of the real response body (see `set_viewer_content`), so the UI
-    /// can say so instead of silently showing partial data.
+    /// `Some(full_len)` when the body shown in `response_editor` is only part
+    /// of the real response body (see `set_viewer_content`), so the UI can
+    /// say so instead of silently showing partial data.
     pub response_truncated_bytes: Option<usize>,
+    /// The full display text (pretty JSON when applicable, else raw), paged
+    /// into `response_editor` a page at a time — see `VIEWER_PAGE_BYTES`.
+    /// Kept whole so any page is viewable; the editor only ever holds one.
+    pub viewer_full: String,
+    /// Byte offsets where each viewer page starts (first is always 0).
+    /// More than one entry means the body is paged.
+    pub viewer_page_starts: Vec<usize>,
+    /// Readable-text rendering of an HTML body for builds without the
+    /// `webview` feature (`None` with the feature on, or for non-HTML).
+    /// Set alongside the viewer content; cleared on every new response.
+    pub html_fallback_text: Option<String>,    /// Currently shown page into `viewer_page_starts`.
+    pub viewer_page: usize,
+    pub viewer_full_is_json: bool,
     pub viewer_processing: bool,
     pub parsed_json: Option<serde_json::Value>,
     pub response_preview: ResponsePreview,
@@ -201,6 +214,11 @@ impl RequestTabState {
             response_editor: make_code_editor("", "txt"),
             response_viewer_lines: 0,
             response_truncated_bytes: None,
+            viewer_full: String::new(),
+            viewer_page_starts: Vec::new(),
+            html_fallback_text: None,
+            viewer_page: 0,
+            viewer_full_is_json: false,
             viewer_processing: false,
             parsed_json: None,
             response_preview: ResponsePreview::default(),
@@ -288,14 +306,50 @@ impl RequestTabState {
         // canvas at `total_visual_lines * line_height`. A 10 MB pretty-printed
         // JSON body is ~260k lines, i.e. a multi-million-pixel canvas and a
         // full re-wrap of every line on each layout change — which is what made
-        // the editor freeze (or render blank) on large responses. Showing a
-        // bounded prefix keeps the viewer responsive; the full body is still
-        // intact in `response.body` for copy/save.
-        let (display, truncated_at) = clamp_for_viewer(text);
-        self.response_truncated_bytes = truncated_at;
-        self.response_viewer_lines = display.lines().count().max(1);
-        let syntax = if is_json { "json" } else { "txt" };
-        self.response_editor = make_code_editor(display, syntax);
+        // the editor freeze (or render blank) on large responses. So the full
+        // text is kept in `viewer_full` and the editor holds one page at a
+        // time; page navigation (not a bigger limit) is what makes the whole
+        // body inspectable.
+        self.viewer_full = text.to_owned();
+        self.viewer_full_is_json = is_json;
+        self.viewer_page_starts = page_starts(&self.viewer_full);
+        self.viewer_page = 0;
+        self.show_viewer_page(0);
+    }
+
+    /// Number of viewer pages for the current body (1 when it fits a page).
+    pub fn viewer_page_count(&self) -> usize {
+        self.viewer_page_starts.len().max(1)
+    }
+
+    /// Byte range of the page the editor is currently showing, for "showing
+    /// A of B" notes. Always within `viewer_full`.
+    pub fn viewer_page_span(&self) -> (usize, usize) {
+        let start = self.viewer_page_starts.get(self.viewer_page).copied().unwrap_or(0);
+        let end = self
+            .viewer_page_starts
+            .get(self.viewer_page + 1)
+            .copied()
+            .unwrap_or_else(|| self.viewer_full.len());
+        (start, end.min(self.viewer_full.len()))
+    }
+
+    /// Show page `page` (clamped) in the editor.
+    pub fn show_viewer_page(&mut self, page: usize) {
+        let count = self.viewer_page_count();
+        let page = page.min(count.saturating_sub(1));
+        self.viewer_page = page;
+        let (start, end) = self.viewer_page_span();
+        // Copy the slice out first: rebuilding the editor below needs `&mut`.
+        let (display, lines) = {
+            let slice = &self.viewer_full[start..end];
+            (slice.to_owned(), slice.lines().count().max(1))
+        };
+        self.response_truncated_bytes =
+            if count > 1 { Some(self.viewer_full.len()) } else { None };
+        self.response_viewer_lines = lines;
+        let syntax = if self.viewer_full_is_json { "json" } else { "txt" };
+        self.response_editor = make_code_editor(&display, syntax);
     }
 
     /// Byte length of what the response editor is actually showing (which may
@@ -391,57 +445,76 @@ impl RequestTabState {
     }
 }
 
-/// Largest response body, in bytes, shown verbatim in the response editor.
+/// Largest response chunk, in bytes, fed to the editor at once.
 ///
-/// Beyond this the viewer shows a prefix. The editor's cost is linear in the
-/// number of wrapped visual lines (it holds one `VisualLine` per segment and
-/// makes its canvas `lines * line_height` tall), so an unbounded body turns
-/// into a multi-million-pixel canvas and a full re-wrap per layout change.
-/// 2 MB is roughly 50k lines of pretty JSON — big enough to be useful, small
-/// enough to stay interactive.
-pub const VIEWER_BYTE_LIMIT: usize = 2 * 1024 * 1024;
+/// The editor's cost is linear in the number of wrapped visual lines (it
+/// holds one `VisualLine` per segment and makes its canvas `lines * height`
+/// tall), so an unbounded body turns into a multi-million-pixel canvas and a
+/// full re-wrap per layout change. Pages stay small enough to stay
+/// interactive; page navigation (not a bigger limit) is what makes a large
+/// body fully inspectable.
+pub const VIEWER_PAGE_BYTES: usize = 512 * 1024;
 
-/// Hard cap on visual lines fed to the editor, independent of byte size.
+/// Hard cap on lines per viewer page, independent of byte size.
 ///
-/// A body can be small in bytes yet have a pathological line count (e.g. a
-/// minified file of a million newlines), which costs layout time per line
-/// regardless of total size.
-pub const VIEWER_LINE_LIMIT: usize = 50_000;
+/// A page can be small in bytes yet have a pathological line count (e.g. a
+/// chunk of a million newlines), which costs layout time per line regardless
+/// of total size.
+pub const VIEWER_PAGE_LINES: usize = 50_000;
 
-/// Returns the slice of `text` safe to display, plus `Some(full_len)` when it
-/// had to be shortened.
+/// Byte offsets where each viewer page starts (first is always 0), so the
+/// editor can show any slice of a large body without holding it all.
+///
+/// Each page covers at most `VIEWER_PAGE_BYTES` bytes *and* at most
+/// `VIEWER_PAGE_LINES` lines — whichever binds first — so both freeze
+/// vectors (one giant wrapped line, or a flood of tiny lines) stay bounded.
+/// Pages tile contiguously: nothing is skipped between them.
 ///
 /// Always cuts on a `char` boundary — slicing a `str` by a byte index that
 /// lands inside a multi-byte UTF-8 sequence panics, and with `panic = "abort"`
 /// that would take the whole app down on any non-ASCII response.
-pub fn clamp_for_viewer(text: &str) -> (&str, Option<usize>) {
-    let full_len = text.len();
-
-    // Byte budget first: find the largest char boundary at or below the limit.
-    let mut end = if full_len > VIEWER_BYTE_LIMIT {
-        let mut candidate = VIEWER_BYTE_LIMIT;
-        while candidate > 0 && !text.is_char_boundary(candidate) {
-            candidate -= 1;
+pub fn page_starts(text: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    let mut start = 0;
+    while start < text.len() {
+        let end = page_end(text, start);
+        if end >= text.len() {
+            break;
         }
-        candidate
-    } else {
-        full_len
-    };
-
-    // Then the line budget, within whatever the byte budget already allowed.
-    if let Some((offset, _)) = text[..end]
-        .char_indices()
-        .filter(|(_, c)| *c == '\n')
-        .nth(VIEWER_LINE_LIMIT)
-    {
-        end = offset;
+        starts.push(end);
+        start = end;
     }
+    starts
+}
 
-    if end == full_len {
-        (text, None)
-    } else {
-        (&text[..end], Some(full_len))
+/// End offset of the page starting at `start`: at most `VIEWER_PAGE_BYTES`
+/// ahead and at most `VIEWER_PAGE_LINES` newlines in. Always a `char`
+/// boundary, always past `start` (when `start` is inside the text).
+fn page_end(text: &str, start: usize) -> usize {
+    let end = floor_char_boundary(text, (start + VIEWER_PAGE_BYTES).min(text.len()));
+    // Newlines are single bytes that can never hide inside a multi-byte
+    // sequence, so these byte offsets are always char boundaries — and byte
+    // scanning is far cheaper than decoding chars.
+    let mut seen = 0usize;
+    for (j, &b) in text.as_bytes()[start..end].iter().enumerate() {
+        if b == b'\n' {
+            seen += 1;
+            if seen > VIEWER_PAGE_LINES {
+                return start + j;
+            }
+        }
     }
+    end
+}
+
+/// Largest `char` boundary in `text` at or below `byte` (`byte` is clamped
+/// into range first, so this never panics).
+fn floor_char_boundary(text: &str, byte: usize) -> usize {
+    let mut candidate = byte.min(text.len());
+    while candidate > 0 && !text.is_char_boundary(candidate) {
+        candidate -= 1;
+    }
+    candidate
 }
 
 /// Syntax token for a given body type.
@@ -741,61 +814,82 @@ mod body_syntax_tests {
 }
 
 #[cfg(test)]
-mod viewer_clamp_tests {
+mod viewer_page_tests {
     use super::*;
 
-    #[test]
-    fn small_bodies_are_shown_in_full() {
-        let text = "{\"a\": 1}";
-        let (shown, truncated) = clamp_for_viewer(text);
-        assert_eq!(shown, text);
-        assert_eq!(truncated, None);
+    fn pages_of(text: &str) -> Vec<String> {
+        let starts = page_starts(text);
+        starts
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| {
+                let e = starts.get(i + 1).copied().unwrap_or(text.len());
+                text[s..e].to_owned()
+            })
+            .collect()
     }
 
     #[test]
-    fn oversized_bodies_are_clamped_and_reported() {
-        let text = "x".repeat(VIEWER_BYTE_LIMIT + 5_000);
-        let (shown, truncated) = clamp_for_viewer(&text);
-        assert!(shown.len() <= VIEWER_BYTE_LIMIT);
-        assert_eq!(truncated, Some(text.len()));
+    fn small_bodies_are_a_single_page() {
+        assert_eq!(page_starts("{\"a\": 1}"), vec![0]);
+    }
+
+    #[test]
+    fn pages_tile_contiguously_without_gaps() {
+        let text = "x".repeat(VIEWER_PAGE_BYTES * 3 + 123);
+        let pages = pages_of(&text);
+        assert!(pages.len() >= 3, "expected several pages, got {}", pages.len());
+        assert_eq!(pages.concat(), text, "pages must cover the body exactly once");
+        assert!(pages.iter().all(|p| p.len() <= VIEWER_PAGE_BYTES));
     }
 
     /// Cutting at a byte offset inside a multi-byte character would panic, and
     /// `panic = "abort"` makes that fatal.
     #[test]
-    fn clamping_never_splits_a_character() {
-        // 3 bytes each, so the byte limit lands mid-character.
-        let text = "€".repeat(VIEWER_BYTE_LIMIT);
-        let (shown, truncated) = clamp_for_viewer(&text);
-        assert!(truncated.is_some());
-        assert!(shown.chars().all(|c| c == '€'));
+    fn paging_never_splits_a_character() {
+        // 3 bytes each, so page boundaries land mid-character.
+        let text = "€".repeat(VIEWER_PAGE_BYTES + 10);
+        let pages = pages_of(&text);
+        assert!(pages.len() > 1);
+        assert_eq!(pages.concat(), text);
+        assert!(pages.iter().all(|p| p.chars().all(|c| c == '€')));
     }
 
     /// A body can be modest in bytes yet have a pathological line count, which
     /// costs layout time per line regardless of total size.
     #[test]
-    fn line_count_is_capped_independently_of_byte_size() {
-        let text = "\n".repeat(VIEWER_LINE_LIMIT * 2);
-        assert!(text.len() < VIEWER_BYTE_LIMIT, "stays under the byte budget");
-
-        let (shown, truncated) = clamp_for_viewer(&text);
-
-        assert_eq!(truncated, Some(text.len()));
-        assert!(shown.lines().count() <= VIEWER_LINE_LIMIT + 1);
+    fn line_count_is_capped_per_page() {
+        let text = "\n".repeat(VIEWER_PAGE_LINES * 3);
+        assert!(text.len() < VIEWER_PAGE_BYTES, "stays under the byte budget");
+        let pages = pages_of(&text);
+        assert!(pages.len() > 1, "line flood must still page");
+        assert_eq!(pages.concat(), text, "no lines may be skipped");
+        assert!(pages.iter().all(|p| p.lines().count() <= VIEWER_PAGE_LINES + 1));
     }
 
     #[test]
-    fn set_viewer_content_records_truncation() {
+    fn set_viewer_content_pages_and_navigates() {
         let mut tab = RequestTabState::new();
 
         tab.set_viewer_content("small", false);
         assert_eq!(tab.response_truncated_bytes, None);
+        assert_eq!(tab.viewer_page_count(), 1);
+        assert_eq!(tab.response_editor.content(), "small");
 
-        let huge = "y".repeat(VIEWER_BYTE_LIMIT + 1_000);
+        let huge = "y".repeat(VIEWER_PAGE_BYTES + 1_000);
         tab.set_viewer_content(&huge, false);
+        assert_eq!(tab.viewer_page_count(), 2);
         assert_eq!(tab.response_truncated_bytes, Some(huge.len()));
-        // The editor must hold only the clamped prefix, not the whole body.
-        assert!(tab.response_editor.content().len() <= VIEWER_BYTE_LIMIT);
+        // The editor must hold only the current page, not the whole body.
+        assert!(tab.response_editor.content().len() <= VIEWER_PAGE_BYTES);
+
+        tab.show_viewer_page(1);
+        assert_eq!(tab.viewer_page, 1);
+        assert_eq!(tab.response_editor.content(), &huge[tab.viewer_page_span().0..]);
+
+        // Out-of-range pages clamp instead of panicking.
+        tab.show_viewer_page(99);
+        assert_eq!(tab.viewer_page, 1);
     }
 }
 

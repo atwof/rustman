@@ -16,20 +16,22 @@ pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
         .padding([8, 10])
         .style(crate::ui::styles::field_input);
 
-    let mut col_col = column![text("Collection").size(11).color(Palette::text_muted())].spacing(4);
+    let mut col_col = column![text("Save to").size(11).color(Palette::text_muted())].spacing(4);
 
     for col in &state.collections {
         let selected = !state.save_dialog_new_col
+            && state.save_dialog_group_id.is_none()
             && state.save_dialog_collection_id.as_deref() == Some(&col.id);
         let col_id = col.id.clone();
-        col_col = col_col.push(collection_radio_btn(&col.name, selected, move || {
-            Message::SaveDialog(SaveDialogMsg::CollectionSelected(col_id.clone()))
+        col_col = col_col.push(collection_radio_btn(col.name.clone(), selected, move || {
+            Message::SaveDialog(SaveDialogMsg::ParentSelected(col_id.clone()))
         }));
+        col_col = save_dialog_groups(state, col_col, &col.id, true, 1);
     }
 
     let new_col_selected = state.save_dialog_new_col;
     col_col = col_col.push(collection_radio_btn(
-        "+ New collection",
+        "+ New collection".to_owned(),
         new_col_selected,
         || Message::SaveDialog(SaveDialogMsg::ToggleNewCollection),
     ));
@@ -361,11 +363,42 @@ pub(super) fn global_scripts_modal(state: &AppState) -> Element<'_, Message> {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-fn collection_radio_btn<'a>(
-    label: &'a str,
+/// Folder rows under `parent` for the save dialog's parent picker, indented
+/// by `depth` and sorted like the sidebar tree (issue #53).
+fn save_dialog_groups<'a>(
+    state: &'a AppState,
+    mut col: iced::widget::Column<'a, Message>,
+    parent_id: &str,
+    parent_is_collection: bool,
+    depth: usize,
+) -> iced::widget::Column<'a, Message> {
+    let mut groups: Vec<&'a crate::domain::group::Group> = state
+        .groups
+        .iter()
+        .filter(|g| g.parent_id == parent_id && g.parent_is_collection == parent_is_collection)
+        .collect();
+    groups.sort_by_key(|g| g.sort_order);
+    for group in groups {
+        let selected =
+            !state.save_dialog_new_col && state.save_dialog_group_id.as_deref() == Some(&group.id);
+        let gid = group.id.clone();
+        let label = format!("└ {}", group.name);
+        let row: Element<'static, Message> = container(collection_radio_btn(label, selected, move || {
+            Message::SaveDialog(SaveDialogMsg::ParentSelected(gid.clone()))
+        }))
+        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: (depth as f32) * 16.0 })
+        .into();
+        col = col.push(row);
+        col = save_dialog_groups(state, col, &group.id, false, depth + 1);
+    }
+    col
+}
+
+fn collection_radio_btn(
+    label: String,
     selected: bool,
-    on_press: impl Fn() -> Message + 'a,
-) -> Element<'a, Message> {
+    on_press: impl Fn() -> Message,
+) -> Element<'static, Message> {
     button(
         row![
             container(Space::new().width(8).height(8))

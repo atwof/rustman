@@ -9,6 +9,9 @@ pub struct AppSession {
     pub active_tab: usize,
     pub active_env_id: Option<String>,
     pub sidebar_panel: String,
+    /// Sidebar content width in px (issue #53).
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: f32,
     #[serde(default)]
     pub theme_idx: usize,
     #[serde(default = "default_timeout_ms")]
@@ -32,3 +35,5 @@ pub struct AppSession {
 }
 
 fn default_timeout_ms() -> u64 { 30_000 }
+
+fn default_sidebar_width() -> f32 { 200.0 }

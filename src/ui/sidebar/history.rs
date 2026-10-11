@@ -6,7 +6,7 @@ use iced::{
 use crate::{
     app::AppState,
     message::{Message, SidebarMsg},
-    ui::{theme::{Palette, TEXT_LG, TEXT_SM}, widgets::kv_table},
+    ui::{theme::{Palette, TEXT_LG, TEXT_SM}, tree_label::tree_label, widgets::kv_table},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
@@ -48,7 +48,9 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             column![
                 row![
                     text(&entry.method).size(10).color(method_color).font(crate::ui::theme::MONO),
-                    text(&entry.url).size(12).color(Palette::text()),
+                    // Long URLs clip to one line (see ui::tree_label); the
+                    // full URL pops up on hover only on clear overflow.
+                    tree_label(entry.url.clone(), 12.0, state.sidebar_width - 70.0),
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),

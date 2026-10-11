@@ -2,12 +2,13 @@ use serde_json::Value;
 
 use crate::domain::{
     collection::{Collection, SavedRequest},
+    group::ImportedCollection,
     request::{ApiKeyLocation, AuthType, BodyType, HttpMethod, KeyValue},
 };
 
 /// Try to parse `input` as an OpenAPI 3.x or Swagger 2.0 spec (JSON or YAML),
 /// returning one collection per spec file.
-pub fn import(input: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+pub fn import(input: &str) -> Result<Vec<ImportedCollection>, String> {
     let v: Value = serde_json::from_str(input)
         .or_else(|_| serde_yaml::from_str(input).map_err(|e| format!("Not JSON or YAML: {e}")))
         .map_err(|e| format!("Not a valid OpenAPI/Swagger file: {e}"))?;
@@ -25,7 +26,7 @@ pub fn import(input: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, Strin
 
 // ── OpenAPI 3.x ───────────────────────────────────────────────────────────────
 
-fn import_openapi_v3(v: &Value) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+fn import_openapi_v3(v: &Value) -> Result<Vec<ImportedCollection>, String> {
     let info = v.get("info").and_then(|i| i.as_object()).ok_or("missing 'info'")?;
     let name = info
         .get("title")
@@ -45,7 +46,7 @@ fn import_openapi_v3(v: &Value) -> Result<Vec<(Collection, Vec<SavedRequest>)>, 
 
     let items = walk_paths(&col_id, &base_url, paths, extract_request_body_oas3);
 
-    Ok(vec![(collection, items)])
+    Ok(vec![ImportedCollection { collection, requests: items, groups: Vec::new() }])
 }
 
 fn extract_base_url_oas3(v: &Value) -> String {
@@ -94,7 +95,7 @@ fn extract_request_body_oas3(op: &Value) -> (String, BodyType) {
 
 // ── Swagger 2.0 ───────────────────────────────────────────────────────────────
 
-fn import_swagger_v2(v: &Value) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+fn import_swagger_v2(v: &Value) -> Result<Vec<ImportedCollection>, String> {
     let info = v.get("info").and_then(|i| i.as_object()).ok_or("missing 'info'")?;
     let name = info
         .get("title")
@@ -114,7 +115,7 @@ fn import_swagger_v2(v: &Value) -> Result<Vec<(Collection, Vec<SavedRequest>)>, 
 
     let items = walk_paths(&col_id, &base_url, paths, extract_request_body_swagger);
 
-    Ok(vec![(collection, items)])
+    Ok(vec![ImportedCollection { collection, requests: items, groups: Vec::new() }])
 }
 
 fn extract_base_url_swagger(v: &Value) -> String {
@@ -204,6 +205,8 @@ fn walk_paths(
             out.push(SavedRequest {
                 id: uuid::Uuid::new_v4().to_string(),
                 collection_id: col_id.to_owned(),
+                group_id: None,
+                sort_order: 0,
                 name: op_name,
                 method,
                 url,
@@ -408,9 +411,9 @@ mod tests {
         let result = import(spec);
         assert!(result.is_ok(), "OAS3 Petstore failed: {:?}", result.err());
         let data = result.unwrap();
-        assert_eq!(data[0].0.name, "Swagger Petstore");
-        assert!(data[0].1.len() >= 2, "expected >= 2 requests, got {}", data[0].1.len());
-        let get_pets = &data[0].1[0];
+        assert_eq!(data[0].collection.name, "Swagger Petstore");
+        assert!(data[0].requests.len() >= 2, "expected >= 2 requests, got {}", data[0].requests.len());
+        let get_pets = &data[0].requests[0];
         assert_eq!(get_pets.method.as_str(), "GET");
         assert!(get_pets.url.contains("petstore.swagger.io"));
         assert!(get_pets.url.contains("/pets"));
@@ -422,8 +425,8 @@ mod tests {
         let result = import(spec);
         assert!(result.is_ok(), "Storefront OAS3 failed: {:?}", result.err());
         let data = result.unwrap();
-        assert_eq!(data[0].0.name, "E-commerce API");
-        assert!(data[0].1.len() >= 3, "expected >= 3 endpoints, got {}", data[0].1.len());
+        assert_eq!(data[0].collection.name, "E-commerce API");
+        assert!(data[0].requests.len() >= 3, "expected >= 3 endpoints, got {}", data[0].requests.len());
     }
 
     #[test]
@@ -432,9 +435,9 @@ mod tests {
         let result = import(spec);
         assert!(result.is_ok(), "Swagger 2 Petstore failed: {:?}", result.err());
         let data = result.unwrap();
-        assert_eq!(data[0].0.name, "Swagger Petstore");
-        assert!(data[0].1.len() > 10, "expected many endpoints, got {}", data[0].1.len());
-        let has_full_url = data[0].1.iter().any(|r| r.url.contains("petstore.swagger.io"));
+        assert_eq!(data[0].collection.name, "Swagger Petstore");
+        assert!(data[0].requests.len() > 10, "expected many endpoints, got {}", data[0].requests.len());
+        let has_full_url = data[0].requests.iter().any(|r| r.url.contains("petstore.swagger.io"));
         assert!(has_full_url, "expected full URL with host");
     }
 
@@ -489,7 +492,9 @@ paths:
         assert!(result.is_ok(), "import failed: {:?}", result.err());
         let data = result.unwrap();
         assert_eq!(data.len(), 1);
-        let (col, reqs) = &data[0];
+        let ic = &data[0];
+        let col = &ic.collection;
+        let reqs = &ic.requests;
         assert_eq!(col.name, "Pet Store");
         assert_eq!(reqs.len(), 3);
         // GET /pets
@@ -527,7 +532,9 @@ paths:
         assert!(result.is_ok(), "import failed: {:?}", result.err());
         let data = result.unwrap();
         assert_eq!(data.len(), 1);
-        let (col, reqs) = &data[0];
+        let ic = &data[0];
+        let col = &ic.collection;
+        let reqs = &ic.requests;
         assert_eq!(col.name, "User API");
         assert_eq!(reqs.len(), 1);
         assert!(reqs[0].url.starts_with("https://api.example.com/v1/users"));
@@ -551,6 +558,6 @@ paths:
         let result = import(yaml);
         assert!(result.is_ok());
         let data = result.unwrap();
-        assert_eq!(data[0].0.name, "YAML Test");
+        assert_eq!(data[0].collection.name, "YAML Test");
     }
 }

@@ -171,6 +171,11 @@ fn global_keys(event: Event, _status: event::Status, window_id: window::Id) -> O
         keyboard::Key::Character("7") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(6))),
         keyboard::Key::Character("8") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(7))),
         keyboard::Key::Character("9") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(8))),
+        // Escape cancels an in-progress sidebar rename, restoring the name
+        // captured when the field opened (a no-op when none is open).
+        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+            Some(Message::Sidebar(crate::message::SidebarMsg::CancelRename))
+        }
         _ => None,
     }
 }

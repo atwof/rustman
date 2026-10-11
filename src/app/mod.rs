@@ -20,12 +20,16 @@ mod request_ops;
 mod scripting;
 mod session;
 mod subscription;
+mod tree;
 mod update;
 
 pub struct AppState {
     pub tabs: TabManager,
     pub sidebar: SidebarState,
     pub collections: Vec<Collection>,
+    /// Folder nodes under collections — `Collection → Backend → Resource`
+    /// (issue #53). Flat list; tree shape comes from each group's parent.
+    pub groups: Vec<crate::domain::group::Group>,
     pub requests: HashMap<String, Vec<SavedRequest>>,
     pub history: Vec<HistoryEntry>,
     pub environments: Vec<AppEnvironment>,
@@ -41,13 +45,19 @@ pub struct AppState {
     pub palette_open: bool,
     pub palette_query: String,
     pub palette_selected: usize,
-    pub profile_avatar: Option<iced::widget::image::Handle>,
+    /// Footer taps toward the creator easter egg (resets on unlock).
+    pub creator_taps: u8,
+    /// Triple-tapped footer: show the hidden creator card.
+    pub creator_unlocked: bool,
     /// LRU cache for parsed response JSON — keyed by body hash, 20-slot cap.
     pub parsed_cache: crate::services::cache::ParsedBodyCache,
     pub export_dialog_collection: Option<String>,
     pub save_dialog_open: bool,
     pub save_dialog_name: String,
     pub save_dialog_collection_id: Option<String>,
+    /// Parent picked in the save dialog when it is a group (an id in
+    /// `state.groups`). `None` means the parent is the collection itself.
+    pub save_dialog_group_id: Option<String>,
     pub save_dialog_new_col: bool,
     pub save_dialog_new_col_name: String,
     pub git_log: Vec<crate::services::vcs::CommitInfo>,
@@ -64,15 +74,15 @@ pub struct AppState {
     pub git_clone_url: String,
     pub curl_modal_open: bool,
     pub curl_modal_command: String,
-    pub github_username: String,
-    pub github_email: String,
-    pub github_website: String,
     pub git_user_name: String,
     pub git_user_email: String,
     pub git_history_search: String,
     pub theme_idx: usize,
     /// Split ratio: request panel FillPortion (1-99). Response = 100 - panel_split.
     pub panel_split: u16,
+    /// Sidebar content width in px (issue #53: the sidebar used to be a fixed
+    /// 264px and could not be adjusted). Excludes the 48px icon rail.
+    pub sidebar_width: f32,
     /// Layout direction: false = top/bottom, true = left/right.
     pub horizontal_layout: bool,
     /// UI zoom level (0.7 – 2.0). Applied via iced scale_factor.

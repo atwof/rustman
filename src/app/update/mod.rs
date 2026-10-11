@@ -64,6 +64,9 @@ fn handle_layout(state: &mut AppState, msg: LayoutMsg) -> Task<Message> {
                 state.panel_split = split;
             }
         }
+        LayoutMsg::SidebarWidthChanged(width) => {
+            state.sidebar_width = width.clamp(160.0, 600.0);
+        }
     }
     Task::none()
 }

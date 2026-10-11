@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, row, Space, Text},
+    widget::{button, column, container, mouse_area, row, Space, Text},
     Background, Border, Element, Length,
 };
 
@@ -17,7 +17,14 @@ mod tab_bar;
 use style::{icon_btn_style, icon_rail_style, sidebar_style, surface_style};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
-    let main = row![left_panel(state), main_area(state)].height(Length::Fill);
+    // Clicking anywhere outside an open collection menu dismisses it. Both
+    // fire alongside any nested control's own press (parent-first), so row
+    // clicks still toggle/open and right-clicks on another header still swap
+    // the menu over — the nested message is published last and wins.
+    let main: Element<Message> = mouse_area(row![left_panel(state), main_area(state)].height(Length::Fill))
+        .on_press(Message::Sidebar(SidebarMsg::ContextMenuClosed))
+        .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuClosed))
+        .into();
     let root: Element<Message> = match crate::ui::update_banner::view(state) {
         Some(banner) => column![banner, main].into(),
         None => main.into(),
@@ -59,16 +66,25 @@ fn left_panel(state: &AppState) -> Element<'_, Message> {
         SidebarPanel::Settings   => sidebar::settings::view(state),
     };
 
-    container(
-        row![
-            icon_rail(state),
-            iced::widget::rule::vertical(0.0),
-            container(panel_content).width(Length::Fill).height(Length::Fill),
-        ]
+    // Icon rail (48px) + resizable content width (issue #53).
+    let content_width = state.sidebar_width.clamp(160.0, 600.0);
+    row![
+        container(
+            row![
+                icon_rail(state),
+                iced::widget::rule::vertical(0.0),
+                container(panel_content).width(Length::Fill).height(Length::Fill),
+            ]
+            .height(Length::Fill),
+        )
+        .style(sidebar_style)
+        .width(48.0 + content_width)
         .height(Length::Fill),
-    )
-    .style(sidebar_style)
-    .width(264)
+        crate::ui::widgets::sidebar_splitter::sidebar_splitter(48.0 + content_width, |w| {
+            Message::Layout(crate::message::LayoutMsg::SidebarWidthChanged(w - 48.0))
+        }),
+    ]
+    .spacing(0)
     .height(Length::Fill)
     .into()
 }

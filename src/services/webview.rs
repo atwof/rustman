@@ -13,10 +13,14 @@
 //! response needs previewing. Every later resize/content/visibility change
 //! is a direct, synchronous call from `update()` — no `Task` required.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
+#[cfg(feature = "webview")]
+use std::cell::Cell;
 
 use iced::window;
+#[cfg(feature = "webview")]
 use wry::dpi::{LogicalPosition, LogicalSize, Position, Size};
+#[cfg(feature = "webview")]
 use wry::{Rect, WebView, WebViewBuilder};
 
 /// How many times to attempt creation before giving up for good.
@@ -29,14 +33,18 @@ use wry::{Rect, WebView, WebViewBuilder};
 /// budget recovers from that while still bounding the cost on platforms that
 /// genuinely cannot host a child webview (e.g. native Wayland), where every
 /// attempt would otherwise be retried forever.
+#[cfg(feature = "webview")]
 const MAX_CREATION_ATTEMPTS: u32 = 5;
 
 thread_local! {
+    #[cfg(feature = "webview")]
     static WEBVIEW: RefCell<Option<WebView>> = const { RefCell::new(None) };
     /// Tracks what's currently loaded so a periodic bounds/visibility sync
     /// doesn't reload (and reset scroll position / flash) on every tick.
+    #[cfg(feature = "webview")]
     static LAST_HTML: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Number of failed creation attempts so far.
+    #[cfg(feature = "webview")]
     static CREATION_ATTEMPTS: Cell<u32> = const { Cell::new(0) };
     /// Why the last attempt failed, for reporting in the UI instead of only
     /// to stderr (a GUI build on Windows has no console attached, so an
@@ -50,8 +58,17 @@ thread_local! {
 ///
 /// Only true once the retry budget is exhausted, so a transient failure (very
 /// common on Windows while WebView2 initialises) no longer disables preview.
+/// In builds without the `webview` feature there is no webview at all, so this
+/// is always true and every caller takes its fallback path.
+#[cfg(feature = "webview")]
 pub fn creation_failed() -> bool {
     CREATION_ATTEMPTS.with(Cell::get) >= MAX_CREATION_ATTEMPTS
+}
+
+/// No webview in this build — see above.
+#[cfg(not(feature = "webview"))]
+pub fn creation_failed() -> bool {
+    true
 }
 
 /// The reason the last creation attempt failed, if any — shown in the preview
@@ -60,9 +77,51 @@ pub fn last_error() -> Option<String> {
     LAST_ERROR.with(|err| err.borrow().clone())
 }
 
+/// Readable-text fallback for an HTML response, used only in builds without
+/// the `webview` feature. With the feature on this is always `None` (the
+/// native preview handles HTML); with it off, HTML bodies render via
+/// [`crate::services::format::html_to_text`] instead of tag soup.
+///
+/// Input is capped: conversion is linear and one-shot per response, but
+/// there is no point rendering megabytes of fallback text — the full source
+/// stays one copy away.
+#[cfg(feature = "webview")]
+pub fn html_fallback_for(
+    _resp: &crate::domain::response::HttpResponse,
+) -> Option<String> {
+    None
+}
+
+/// See above.
+#[cfg(not(feature = "webview"))]
+pub fn html_fallback_for(
+    resp: &crate::domain::response::HttpResponse,
+) -> Option<String> {
+    if !resp.is_html() || resp.body.is_empty() {
+        return None;
+    }
+    const FALLBACK_INPUT_CAP: usize = 1_000_000;
+    let capped = resp.body.len() > FALLBACK_INPUT_CAP;
+    let slice_end = if capped {
+        let mut end = FALLBACK_INPUT_CAP.min(resp.body.len());
+        while end > 0 && !resp.body.is_char_boundary(end) {
+            end -= 1;
+        }
+        end
+    } else {
+        resp.body.len()
+    };
+    let mut text = crate::services::format::html_to_text(&resp.body[..slice_end]);
+    if capped {
+        text.push_str("\n\n[…preview truncated at 1 MB — copy the response for the full source…]");
+    }
+    Some(text)
+}
+
 /// Ensures a webview exists (creating it on first call) and points it at
 /// `html`, positioned over `bounds` (already scaled to physical-ish logical
 /// pixels by the caller — see `scaled_bounds`) and visible.
+#[cfg(feature = "webview")]
 fn create(window: &dyn window::Window, bounds: iced::Rectangle, html: &str) {
     let handle = match window.window_handle() {
         Ok(handle) => handle,
@@ -95,6 +154,7 @@ fn create(window: &dyn window::Window, bounds: iced::Rectangle, html: &str) {
     });
 }
 
+#[cfg(feature = "webview")]
 fn record_failure(message: String) {
     CREATION_ATTEMPTS.with(|attempts| attempts.set(attempts.get().saturating_add(1)));
     LAST_ERROR.with(|err| *err.borrow_mut() = Some(message));
@@ -104,6 +164,7 @@ fn record_failure(message: String) {
 /// yet. A no-op if it already exists, or once the retry budget is spent (see
 /// `creation_failed`) — no point retrying every tick on a platform that
 /// cannot attach a child webview at all.
+#[cfg(feature = "webview")]
 pub fn ensure_created<Message: Send + 'static>(
     window_id: window::Id,
     bounds: iced::Rectangle,
@@ -118,13 +179,31 @@ pub fn ensure_created<Message: Send + 'static>(
     .discard()
 }
 
+/// No webview in this build: nothing to create.
+#[cfg(not(feature = "webview"))]
+pub fn ensure_created<Message: Send + 'static>(
+    _window_id: window::Id,
+    _bounds: iced::Rectangle,
+    _html: String,
+) -> iced::Task<Message> {
+    iced::Task::none()
+}
+
+#[cfg(feature = "webview")]
 pub fn exists() -> bool {
     WEBVIEW.with(|cell| cell.borrow().is_some())
+}
+
+/// No webview in this build.
+#[cfg(not(feature = "webview"))]
+pub fn exists() -> bool {
+    false
 }
 
 /// Loads `html` only if it differs from what's already showing, so a
 /// periodic sync doesn't repeatedly reload the same content (which would
 /// reset scroll position and flash on every tick).
+#[cfg(feature = "webview")]
 pub fn load_html_if_changed(html: &str) {
     let already_loaded =
         LAST_HTML.with(|last| last.borrow().as_deref() == Some(html));
@@ -139,6 +218,11 @@ pub fn load_html_if_changed(html: &str) {
     LAST_HTML.with(|last| *last.borrow_mut() = Some(html.to_owned()));
 }
 
+/// No webview in this build.
+#[cfg(not(feature = "webview"))]
+pub fn load_html_if_changed(_html: &str) {}
+
+#[cfg(feature = "webview")]
 pub fn set_bounds(bounds: iced::Rectangle) {
     WEBVIEW.with(|cell| {
         if let Some(webview) = cell.borrow().as_ref() {
@@ -147,6 +231,11 @@ pub fn set_bounds(bounds: iced::Rectangle) {
     });
 }
 
+/// No webview in this build.
+#[cfg(not(feature = "webview"))]
+pub fn set_bounds(_bounds: iced::Rectangle) {}
+
+#[cfg(feature = "webview")]
 pub fn set_visible(visible: bool) {
     WEBVIEW.with(|cell| {
         if let Some(webview) = cell.borrow().as_ref() {
@@ -154,6 +243,10 @@ pub fn set_visible(visible: bool) {
         }
     });
 }
+
+/// No webview in this build.
+#[cfg(not(feature = "webview"))]
+pub fn set_visible(_visible: bool) {}
 
 
 pub fn scaled_bounds(bounds: iced::Rectangle, ui_scale: f64) -> iced::Rectangle {
@@ -170,6 +263,7 @@ pub fn scaled_bounds(bounds: iced::Rectangle, ui_scale: f64) -> iced::Rectangle 
     }
 }
 
+#[cfg(feature = "webview")]
 fn to_wry_rect(bounds: iced::Rectangle) -> Rect {
     Rect {
         position: Position::Logical(LogicalPosition::new(bounds.x as f64, bounds.y as f64)),

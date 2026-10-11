@@ -33,6 +33,13 @@ impl ParsedBodyCache {
     }
 
     pub fn insert(&mut self, body: &str, value: serde_json::Value) {
+        // The LRU counts entries, not bytes: without a size gate, twenty
+        // huge responses could pin hundreds of MB. Big bodies parse slowly
+        // enough that re-parsing on revisit is the lesser evil — and the tab
+        // keeps its own copy either way, so nothing is lost.
+        if body.len() > 1_000_000 {
+            return;
+        }
         let key = Self::body_hash(body);
         self.inner.put(key, value);
     }

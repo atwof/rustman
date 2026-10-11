@@ -1,6 +1,6 @@
 [package]
 name = "rustman"
-version = "0.3.13"
+version = "0.3.14"
 edition = "2024"
 description = "Rustman — pure-Rust native API testing tool built with iced"
 authors = ["animeshchaudhri"]
@@ -12,6 +12,9 @@ path = "src/main.rs"
 [dependencies]
 # GUI
 iced = { version = "0.14", features = ["tokio", "advanced", "image", "svg"] }
+iced_core = "0.14"
+# Glyph advances for label overflow prediction (see ui/tree_label.rs)
+ttf-parser = "0.25"
 # Full-featured code editor widget (line numbers, syntect highlight, selection, undo)
 iced-code-editor = "0.3.11"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -28,8 +31,9 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls-native-certs",
 ] }
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime (trimmed: task/select/sync/fs only — net, io, signal and
+# process come transitively only if someone actually needs them)
+tokio = { version = "1", features = ["macros", "rt", "sync", "time", "fs"] }
 # Cooperative cancellation for background jobs (CancellationToken)
 tokio-util = "0.7"
 
@@ -73,16 +77,24 @@ rfd = "0.17"
 # Response preview: spreadsheet (pure Rust), PDF (native pdfium, auto-fetched
 # binary), and HTML (native OS webview embedded as a child window)
 calamine = "0.36"
-wry = "0.55"
+wry = { version = "0.55", optional = true }
 pdfium-render = { version = "0.9", features = ["thread_safe"] }
 pdfium-bundled = "0.1"
 
 # Pre-request/test scripting language (see vendor/rustman-engine)
 rustman-engine = { path = "vendor/rustman-engine" }
-rustls = { version = "0.23.43", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.43", default-features = false, features = ["aws_lc_rs"] }
 
 [patch.crates-io]
 iced-code-editor = { path = "vendor/iced-code-editor" }
+
+[features]
+default = ["webview"]
+# Native OS HTML preview (WebKitGTK on Linux, WebView2 on Windows, WKWebView
+# on macOS). Disable for a WebKit-free build (`--no-default-features`) that
+# runs anywhere at the cost of rendered HTML previews — those fall back to a
+# built-in readable-text rendering instead.
+webview = ["dep:wry"]
 
 [profile.release]
 opt-level = 'z'  

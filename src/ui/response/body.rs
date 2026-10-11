@@ -46,6 +46,13 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
     if resp.is_html() && !crate::services::webview::creation_failed() {
         return html_view();
     }
+    // No native preview: either this build has no WebKit (readable-text
+    // fallback), or attach failed and gave up (raw source, as before).
+    if resp.is_html() {
+        if let Some(rendered) = tab.html_fallback_text.as_deref() {
+            return simple_html_view(rendered);
+        }
+    }
     // Either not HTML, or it is but the embedded webview couldn't attach on
     // this platform/configuration (e.g. no child-window support under
     // native Wayland) — fall through to the plain text/source view below,
@@ -56,16 +63,58 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
         .then(crate::services::webview::last_error)
         .flatten();
 
+    let page_count = tab.viewer_page_count();
     let size_note: Element<Message> = match tab.response_truncated_bytes {
-        Some(full_len) => text(format!(
-            " · showing first {} of {} (full body still copied/saved)",
-            human_bytes(tab.response_editor_bytes()),
-            human_bytes(full_len),
-        ))
-        .size(TEXT_XS)
-        .color(Palette::WARNING)
-        .into(),
+        Some(held_len) => {
+            let mut note = format!(
+                " · page {}/{} · showing {} of {}",
+                tab.viewer_page + 1,
+                page_count,
+                human_bytes(tab.response_editor_bytes()),
+                human_bytes(held_len),
+            );
+            // Bodies past the HTTP inline cap are cut before the viewer ever
+            // sees them — say how much never made it, instead of implying the
+            // pages cover everything.
+            if resp.body_stored {
+                let beyond = resp.body_size.saturating_sub(resp.body.len());
+                if beyond > 0 {
+                    note.push_str(&format!(" (+{} past preview limit)", human_bytes(beyond)));
+                }
+            }
+            text(note).size(TEXT_XS).color(Palette::WARNING).into()
+        }
         None => Space::new().into(),
+    };
+
+    let page_nav: Element<Message> = if page_count > 1 {
+        let page = tab.viewer_page;
+        let prev = button(icons::arrow_left().size(11).color(Palette::text_muted()))
+            .padding([4, 6])
+            .style(iced::widget::button::text);
+        let prev = if page > 0 {
+            prev.on_press(Message::Response(ResponseMsg::ViewerPagePrev))
+        } else {
+            prev
+        };
+        let next = button(icons::arrow_right().size(11).color(Palette::text_muted()))
+            .padding([4, 6])
+            .style(iced::widget::button::text);
+        let next = if page + 1 < page_count {
+            next.on_press(Message::Response(ResponseMsg::ViewerPageNext))
+        } else {
+            next
+        };
+        row![
+            prev,
+            text(format!("Page {}/{}", page + 1, page_count)).size(TEXT_XS).color(Palette::text_muted()),
+            next,
+        ]
+        .spacing(2)
+        .align_y(Alignment::Center)
+        .into()
+    } else {
+        Space::new().into()
     };
 
     let toolbar = container(
@@ -73,6 +122,7 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
             text(format!("{} lines", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle()),
             size_note,
             Space::new().width(Length::Fill),
+            page_nav,
             button(
                 row![
                     icons::copy().size(11).color(Palette::text_muted()),
@@ -149,8 +199,7 @@ fn preview_unavailable_banner(reason: &str) -> Element<'static, Message> {
 /// positioned to exactly cover it from outside Iced's own rendering.
 pub const HTML_PANEL_ID: iced::widget::Id = iced::widget::Id::new("response-html-panel");
 
-fn html_view() -> Element<'static, Message> {
-    container(
+fn html_view() -> Element<'static, Message> {    container(
         text("Loading preview…").size(TEXT_SM).color(Palette::text_subtle()),
     )
     .id(HTML_PANEL_ID)
@@ -158,6 +207,27 @@ fn html_view() -> Element<'static, Message> {
     .height(Length::Fill)
     .center_x(Length::Fill)
     .center_y(Length::Fill)
+    .into()
+}
+
+/// Readable-text HTML rendering for builds without the `webview` feature.
+/// Borrows the pre-rendered fallback (computed once per response, not per
+/// frame). The full source stays one copy away via the Copy button.
+fn simple_html_view<'a>(rendered: &'a str) -> Element<'a, Message> {
+    container(
+        column![
+            text("No WebKit in this build — showing page text. Copy the response for full source.")
+                .size(TEXT_XS)
+                .color(Palette::text_subtle()),
+            scrollable(text(rendered).size(TEXT_SM).color(Palette::text()))
+                .height(Length::Fill),
+        ]
+        .spacing(4)
+        .height(Length::Fill),
+    )
+    .padding([8, 12])
+    .width(Length::Fill)
+    .height(Length::Fill)
     .into()
 }
 

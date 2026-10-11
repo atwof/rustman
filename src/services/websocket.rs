@@ -26,7 +26,10 @@ fn ensure_crypto_provider() {
     INSTALL.call_once(|| {
         // Fails only if a provider was already installed, which is fine: the
         // goal is just that *some* provider is in place before a handshake.
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        // aws-lc is the single provider linked into the binary (see Cargo
+        // unification note) — installing ring here as well would drag the
+        // second crypto stack back in.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     });
 }
 

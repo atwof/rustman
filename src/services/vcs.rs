@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use git2::{
@@ -8,6 +8,7 @@ use git2::{
 use serde_json;
 
 use crate::domain::collection::{Collection, SavedRequest};
+use crate::domain::group::{ImportedCollection, ImportedGroup};
 
 fn open_at(path: &PathBuf) -> Result<Repository, String> {
     std::fs::create_dir_all(path).map_err(|e| e.to_string())?;
@@ -21,6 +22,10 @@ fn open_at(path: &PathBuf) -> Result<Repository, String> {
 struct CollectionFile {
     collection: Collection,
     requests: Vec<SavedRequest>,
+    /// Folder tree (issue #53). Defaulted so repos committed by older
+    /// rustman versions — which wrote no `groups` key — still load.
+    #[serde(default)]
+    groups: Vec<ImportedGroup>,
 }
 
 /// Filename the global script pair is stored under, at the repo root
@@ -62,7 +67,7 @@ pub fn read_commit_global_script(data_dir: &PathBuf, commit_id: &str) -> Option<
     Some((file.pre_request_script, file.test_script))
 }
 
-pub fn load_collections(repo: &Repository) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+pub fn load_collections(repo: &Repository) -> Result<Vec<ImportedCollection>, String> {
     let workdir = repo.workdir().unwrap();
     let mut results = Vec::new();
 
@@ -73,7 +78,11 @@ pub fn load_collections(repo: &Repository) -> Result<Vec<(Collection, Vec<SavedR
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
             let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
             if let Ok(cf) = serde_json::from_str::<CollectionFile>(&json) {
-                results.push((cf.collection, cf.requests));
+                results.push(ImportedCollection {
+                    collection: cf.collection,
+                    requests: cf.requests,
+                    groups: cf.groups,
+                });
             }
         }
     }
@@ -289,7 +298,7 @@ pub fn checkout_branch(data_dir: &PathBuf, name: &str) -> Result<(), String> {
 pub fn read_commit_collections(
     data_dir: &PathBuf,
     commit_id: &str,
-) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+) -> Result<Vec<ImportedCollection>, String> {
     let repo = open_at(data_dir)?;
     let oid = git2::Oid::from_str(commit_id).map_err(|e| e.to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
@@ -300,7 +309,11 @@ pub fn read_commit_collections(
             if let Ok(object) = entry.to_object(&repo) {
                 if let Some(blob) = object.as_blob() {
                     if let Ok(file) = serde_json::from_slice::<CollectionFile>(blob.content()) {
-                        out.push((file.collection, file.requests));
+                        out.push(ImportedCollection {
+                            collection: file.collection,
+                            requests: file.requests,
+                            groups: file.groups,
+                        });
                     }
                 }
             }
@@ -376,8 +389,7 @@ pub fn pull(data_dir: &PathBuf) -> Result<String, String> {
 
 pub fn write_working_tree(
     data_dir: &PathBuf,
-    collections: &[Collection],
-    requests: &HashMap<String, Vec<SavedRequest>>,
+    collections: &[ImportedCollection],
     global_pre_request_script: &str,
     global_test_script: &str,
 ) -> Result<(), String> {
@@ -387,7 +399,7 @@ pub fn write_working_tree(
         .ok_or_else(|| "repository has no working directory".to_owned())?
         .to_path_buf();
 
-    let current: HashSet<String> = collections.iter().map(|c| c.id.clone()).collect();
+    let current: HashSet<String> = collections.iter().map(|c| c.collection.id.clone()).collect();
     if let Ok(entries) = std::fs::read_dir(&workdir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -404,11 +416,14 @@ pub fn write_working_tree(
         }
     }
 
-    for collection in collections {
-        let reqs = requests.get(&collection.id).cloned().unwrap_or_default();
-        let file = CollectionFile { collection: collection.clone(), requests: reqs };
+    for imported in collections {
+        let file = CollectionFile {
+            collection: imported.collection.clone(),
+            requests: imported.requests.clone(),
+            groups: imported.groups.clone(),
+        };
         let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-        std::fs::write(workdir.join(format!("{}.json", collection.id)), json)
+        std::fs::write(workdir.join(format!("{}.json", imported.collection.id)), json)
             .map_err(|e| e.to_string())?;
     }
 
@@ -426,7 +441,7 @@ pub fn write_working_tree(
     Ok(())
 }
 
-pub fn load_collections_from(data_dir: &PathBuf) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
+pub fn load_collections_from(data_dir: &PathBuf) -> Result<Vec<ImportedCollection>, String> {
     let repo = open_at(data_dir)?;
     load_collections(&repo)
 }

@@ -90,6 +90,12 @@ Grab the latest binary from the [releases page](https://github.com/rust-man-org/
 | macOS (Apple Silicon + Intel) | `Rustman-macos-universal.dmg` |
 | Windows x86_64 | `rustman-windows-x86_64.zip` |
 | Linux x86_64 | `rustman-linux-x86_64.tar.gz` |
+| Linux x86_64, no WebKit | `rustman-linux-x86_64-nokit.tar.gz` |
+
+The full Linux build embeds HTML previews with the system WebKitGTK, so it
+needs `libwebkit2gtk-4.1` installed. The **nokit** build drops that
+dependency entirely (handy on immutable distros like Fedora Atomic) — HTML
+responses render as readable text instead.
 
 ## Build from source
 
@@ -106,6 +112,16 @@ cargo build --release
 ```
 
 The binary ends up at `target/release/rustman`. The longer guide lives in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+To build without the WebKit HTML preview (no `libwebkit2gtk` needed at
+build or run time — HTML responses fall back to readable text):
+
+```sh
+cargo build --release --no-default-features
+```
+
+and skip the `libwebkit2gtk-4.1-dev`, `libjavascriptcoregtk-4.1-dev`,
+`libsoup-3.0-dev` and `libgtk-3-dev` packages below.
 
 ### Linux system dependencies
 
