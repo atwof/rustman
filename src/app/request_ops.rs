@@ -6,6 +6,7 @@ use crate::{
     message::{AppMsg, FormatTarget, Message},
     services::{format, http, storage},
     state::tabs::RequestTabState,
+    message::ResponseTab,
 };
 
 use super::{scripting, AppState};
