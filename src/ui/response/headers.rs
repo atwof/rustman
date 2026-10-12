@@ -69,7 +69,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             .padding([1, 4])
             .width(Length::Fill),
         )
-        .padding([0,2]);
+        .padding([4,2]);
     }
 
     scrollable(col)

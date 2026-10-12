@@ -4,9 +4,7 @@ use iced::{
 };
 
 use crate::{
-    domain::response::HttpResponse,
-    message::Message,
-    ui::{icons, theme::{Palette, TEXT_SM, TEXT_XS}},
+    domain::response::HttpResponse, message::Message, ui::{icons, theme::{Palette, RESPONSE_BODY_PADDING, TEXT_SM, TEXT_XS}},
 };
 
 pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
@@ -19,7 +17,7 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
             ]
             .spacing(10)
             .align_y(Alignment::Center)
-            .padding([4, 12]),
+            .padding(RESPONSE_BODY_PADDING),
         )
         .width(Length::Fill)
         .into();
@@ -46,7 +44,7 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
         ]
         .spacing(8)
         .align_y(Alignment::Center)
-        .padding([4, 12]),
+        .padding(RESPONSE_BODY_PADDING),
     )
     .width(Length::Fill)
     .into()
