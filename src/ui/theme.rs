@@ -398,6 +398,7 @@ impl Palette {
             whitespace_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.4 },
             selection_color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.28 },
             syntax_theme_name: t.syntax_theme,
+            json_key_color: accent,
         }
     }
 }

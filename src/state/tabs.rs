@@ -350,6 +350,7 @@ impl RequestTabState {
         self.response_viewer_lines = lines;
         let syntax = if self.viewer_full_is_json { "json" } else { "txt" };
         self.response_editor = make_code_editor(&display, syntax);
+        self.response_editor.set_show_whitespace(false);
     }
 
     /// Byte length of what the response editor is actually showing (which may
