@@ -160,7 +160,7 @@ impl WrappingCalculator {
         let wrap_width_pixels = if let Some(cols) = self.wrap_column {
             cols as f32 * self.char_width
         } else {
-            (viewport_width - gutter_width).max(self.char_width)
+            (viewport_width - gutter_width - 25.0).max(self.char_width)
         };
 
         let mut visual_lines = Vec::new();
