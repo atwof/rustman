@@ -73,6 +73,15 @@ fn calculate_segment_geometry(
     (base_offset + prefix_width, segment_width)
 }
 
+fn continuation_indent(line: &str, visual_line: &VisualLine, char_width: f32) -> f32 {
+    if visual_line.is_first_segment() {
+        return 0.0;
+    }
+
+    let leading = line.chars().take_while(|c| c.is_whitespace()).count();
+    (leading as f32 * char_width).min(24.0)
+}
+
 fn expand_tabs(text: &str, tab_width: usize) -> Cow<'_, str> {
     if !text.contains('\t') {
         return Cow::Borrowed(text);
@@ -673,8 +682,13 @@ impl CodeEditor {
                 syntax_set,
             );
 
-            let mut x_offset =
-                ctx.gutter_width + 5.0 - ctx.horizontal_scroll_offset;
+            let mut x_offset = ctx.gutter_width + 5.0
+                + continuation_indent(
+                    self.buffer.line(visual_line.logical_line),
+                    visual_line,
+                    ctx.char_width,
+                )
+                - ctx.horizontal_scroll_offset;
             let mut char_pos = 0;
             let json_key_end = if self.syntax == "json" {
                 json_key_end(self.buffer.line(visual_line.logical_line))
@@ -776,7 +790,9 @@ impl CodeEditor {
             } else {
                 expand_tabs(line_segment, super::TAB_WIDTH).into_owned()
             };
-            let base_x = ctx.gutter_width + 5.0 - ctx.horizontal_scroll_offset;
+            let base_x = ctx.gutter_width + 5.0
+                + continuation_indent(full_line_content, visual_line, ctx.char_width)
+                - ctx.horizontal_scroll_offset;
             if self.show_whitespace {
                 let ws_color = self.style.whitespace_color;
                 let text_color = self.style.text_color;
