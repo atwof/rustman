@@ -60,6 +60,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     let mut global_pre_request_script = String::new();
     let mut global_test_script = String::new();
     let mut sidebar_width = 200.0;
+    let mut auto_check_updates = false;
     let mut tls_options = crate::services::http::TlsOptions::default();
     if let Some(sess) = session {
         theme_idx = sess.theme_idx;
@@ -67,6 +68,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         global_pre_request_script = sess.global_pre_request_script.clone();
         global_test_script = sess.global_test_script.clone();
         sidebar_width = sess.sidebar_width;
+        auto_check_updates = sess.auto_check_updates;
         tls_options = crate::services::http::TlsOptions {
             accept_invalid_certs: sess.tls_accept_invalid_certs,
             http1_only: sess.tls_http1_only,
@@ -74,7 +76,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
             force_tls13: sess.tls_force_tls13,
         };
         crate::ui::theme::Palette::set_theme_idx(theme_idx);
-        use crate::state::tabs::{body_syntax_for, make_code_editor, RequestTabState};
+        use crate::state::tabs::{RequestTabState, body_syntax_for, make_code_editor};
         let restored: Vec<RequestTabState> = sess
             .tabs
             .into_iter()
@@ -85,7 +87,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.method = snap.method;
                 let (url, params) =
                     crate::domain::request::reconcile_url_params(&snap.url, &snap.params);
-                t.url = url;
+                t.set_url(url);
                 t.headers = snap.headers;
                 t.params = params;
                 t.body_type = snap.body_type.clone();
@@ -105,7 +107,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.jwt_secret = snap.jwt_secret;
                 t.jwt_subject = snap.jwt_subject;
                 t.jwt_algo = snap.jwt_algo;
-                t.pre_request_editor = crate::state::tabs::make_code_editor(&snap.pre_request_script, "txt");
+                t.pre_request_editor =
+                    crate::state::tabs::make_code_editor(&snap.pre_request_script, "txt");
                 t.test_editor = crate::state::tabs::make_code_editor(&snap.test_script, "txt");
                 t.saved_as = snap.saved_as;
                 t.active_request_tab = snap.active_request_tab;
@@ -177,38 +180,47 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         git_clone_url: String::new(),
         curl_modal_open: false,
         curl_modal_command: String::new(),
+        import_dialog_open: false,
+        importing: false,
         git_history_search: String::new(),
         git_user_name: git_identity
             .as_ref()
             .map(|i| i.name.clone())
             .unwrap_or_default(),
-        git_user_email: git_identity
-            .map(|i| i.email)
-            .unwrap_or_default(),
+        git_user_email: git_identity.map(|i| i.email).unwrap_or_default(),
         theme_idx,
         panel_split: 50,
         sidebar_width,
         horizontal_layout: false,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,
+        auto_check_updates,
         default_timeout_text: default_timeout_ms.to_string(),
         default_timeout_ms,
-        global_pre_request_editor: iced::widget::text_editor::Content::with_text(&global_pre_request_script),
+        global_pre_request_editor: iced::widget::text_editor::Content::with_text(
+            &global_pre_request_script,
+        ),
         global_test_editor: iced::widget::text_editor::Content::with_text(&global_test_script),
         global_scripts_modal_open: false,
         tls_options,
         session_dirty: false,
     };
 
-    let update_task = Task::perform(
-        crate::services::update::check(),
-        |res| match res {
-            Ok(opt) => Message::Update(crate::message::UpdateMsg::Checked(Ok(opt))),
-            Err(e) => Message::Update(crate::message::UpdateMsg::Checked(Err(e))),
-        },
-    );
+    let update_task = Task::perform(crate::services::update::check(), |res| match res {
+        Ok(opt) => Message::Update(crate::message::UpdateMsg::Checked(Ok(opt))),
+        Err(e) => Message::Update(crate::message::UpdateMsg::Checked(Err(e))),
+    });
 
-    (state, update_task)
+    // Opted out (issue #57): zero boot-time network. The manual Check button
+    // in Settings still works — it dispatches its own task on demand.
+    (
+        state,
+        if auto_check_updates {
+            update_task
+        } else {
+            Task::none()
+        },
+    )
 }
 
 fn parse_sidebar_panel(s: &str) -> crate::message::SidebarPanel {

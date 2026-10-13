@@ -98,7 +98,11 @@ impl<'a> Parser<'a> {
                 } else {
                     Vec::new()
                 };
-                Ok(Stmt::If { cond, then_branch, else_branch })
+                Ok(Stmt::If {
+                    cond,
+                    then_branch,
+                    else_branch,
+                })
             }
             _ => {
                 let expr = self.expr()?;

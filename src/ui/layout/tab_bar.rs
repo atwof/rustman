@@ -1,33 +1,46 @@
 use iced::{
-    widget::{button, container, mouse_area, row, scrollable, text, Text},
     Alignment, Background, Border, Color, Element, Length,
+    widget::{Text, button, container, mouse_area, row, scrollable, text},
 };
 
 use crate::{
     app::AppState,
     message::{Message, PaletteMsg, RequestMsg},
-    ui::{icons, theme::{Palette, MONO, TEXT_SM, TEXT_XS}},
+    ui::{
+        icons,
+        theme::{MONO, Palette, TEXT_SM, TEXT_XS},
+    },
 };
 
 use super::style::{method_color, tab_bar_container};
 
-
 fn tab_icon_btn(icon: Text<'static>, msg: Message, side: f32) -> Element<'static, Message> {
-    button(container(icon).center_x(Length::Fill).center_y(Length::Fill))
-        .on_press(msg)
-        .style(|_t, status| {
-            let hovered = matches!(status, iced::widget::button::Status::Hovered);
-            iced::widget::button::Style {
-                background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
-                text_color: Palette::text_muted(),
-                border: Border { radius: 6.0.into(), ..Default::default() },
+    button(
+        container(icon)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .on_press(msg)
+    .style(|_t, status| {
+        let hovered = matches!(status, iced::widget::button::Status::Hovered);
+        iced::widget::button::Style {
+            background: if hovered {
+                Some(Background::Color(Palette::hover()))
+            } else {
+                None
+            },
+            text_color: Palette::text_muted(),
+            border: Border {
+                radius: 6.0.into(),
                 ..Default::default()
-            }
-        })
-        .width(side)
-        .height(side)
-        .padding(0)
-        .into()
+            },
+            ..Default::default()
+        }
+    })
+    .width(side)
+    .height(side)
+    .padding(0)
+    .into()
 }
 
 fn method_chip(method: &crate::domain::request::HttpMethod) -> Element<'static, Message> {
@@ -65,11 +78,18 @@ fn ws_chip() -> Element<'static, Message> {
 
 /// The rounded "card" each tab lives in. Active tabs are raised with an accent
 /// top edge; inactive tabs are flat until hovered.
-fn tab_card(active: bool, dragging: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+fn tab_card(
+    active: bool,
+    dragging: bool,
+) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
     move |_t| {
         let accent = Palette::accent();
         let (bg, border_color, border_width) = if dragging {
-            (Some(Palette::accent_soft()), Color { a: 0.7, ..accent }, 1.0)
+            (
+                Some(Palette::accent_soft()),
+                Color { a: 0.7, ..accent },
+                1.0,
+            )
         } else if active {
             (Some(Palette::surface()), Palette::border_subtle(), 1.0)
         } else {
@@ -83,7 +103,16 @@ fn tab_card(active: bool, dragging: bool) -> impl Fn(&iced::Theme) -> iced::widg
                 radius: 8.0.into(),
             },
             shadow: if active {
-                iced::Shadow { color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.35 }, offset: iced::Vector::new(0.0, 2.0), blur_radius: 8.0 }
+                iced::Shadow {
+                    color: Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.35,
+                    },
+                    offset: iced::Vector::new(0.0, 2.0),
+                    blur_radius: 8.0,
+                }
             } else {
                 iced::Shadow::default()
             },
@@ -96,7 +125,11 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
     let tabs = state.tabs.tabs.iter().enumerate().map(|(i, tab)| {
         let active = i == state.tabs.active;
         let dragging = state.dragging_tab == Some(i);
-        let title = if tab.url.is_empty() { tab.title.as_str() } else { &tab.url };
+        let title = if tab.url.is_empty() {
+            tab.title.as_str()
+        } else {
+            &tab.url
+        };
         // Truncate by characters, never by byte index: `&title[..20]` panics
         // when byte 20 falls inside a multi-byte UTF-8 sequence (a URL with
         // percent-decoded non-ASCII, or a renamed tab), and `panic = "abort"`
@@ -104,7 +137,11 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
         let short_title: String = {
             let mut chars = title.chars();
             let head: String = chars.by_ref().take(20).collect();
-            if chars.next().is_some() { format!("{head}…") } else { head }
+            if chars.next().is_some() {
+                format!("{head}…")
+            } else {
+                head
+            }
         };
 
         let modified_dot = if tab.modified && tab.saved_as.is_some() {
@@ -115,22 +152,35 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
             None
         };
 
-        let close_color = if active { Palette::text_muted() } else { Palette::text_subtle() };
+        let close_color = if active {
+            Palette::text_muted()
+        } else {
+            Palette::text_subtle()
+        };
         let close_btn = tab_icon_btn(
             icons::close().size(TEXT_XS).color(close_color),
             Message::Request(RequestMsg::CloseTab(i)),
             20.0,
         );
 
-        let title_color = if active { Palette::text() } else { Palette::text_muted() };
+        let title_color = if active {
+            Palette::text()
+        } else {
+            Palette::text_muted()
+        };
 
         // Accent strip along the top of the active tab.
         let accent_strip = container(iced::widget::Space::new().height(2).width(Length::Fill))
             .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(
-                    if active { Palette::accent() } else { Color::TRANSPARENT },
-                )),
-                border: Border { radius: iced::border::Radius::default().top_left(8.0).top_right(8.0), ..Default::default() },
+                background: Some(Background::Color(if active {
+                    Palette::accent()
+                } else {
+                    Color::TRANSPARENT
+                })),
+                border: Border {
+                    radius: iced::border::Radius::default().top_left(8.0).top_right(8.0),
+                    ..Default::default()
+                },
                 ..Default::default()
             })
             .width(Length::Fill);
@@ -153,8 +203,18 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
             iced::widget::column![
                 accent_strip,
                 row![
-                    container(label_row).padding(iced::Padding { top: 6.0, right: 10.0, bottom: 7.0, left: 12.0 }),
-                    container(close_btn).padding(iced::Padding { top: 0.0, right: 6.0, bottom: 1.0, left: 0.0 }),
+                    container(label_row).padding(iced::Padding {
+                        top: 6.0,
+                        right: 10.0,
+                        bottom: 7.0,
+                        left: 12.0
+                    }),
+                    container(close_btn).padding(iced::Padding {
+                        top: 0.0,
+                        right: 6.0,
+                        bottom: 1.0,
+                        left: 0.0
+                    }),
                 ]
                 .spacing(2)
                 .align_y(Alignment::Center),
@@ -184,9 +244,20 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
             .style(|_t, status| {
                 let hovered = matches!(status, iced::widget::button::Status::Hovered);
                 iced::widget::button::Style {
-                    background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
-                    text_color: if hovered { Palette::text() } else { Palette::text_muted() },
-                    border: Border { radius: 6.0.into(), ..Default::default() },
+                    background: if hovered {
+                        Some(Background::Color(Palette::hover()))
+                    } else {
+                        None
+                    },
+                    text_color: if hovered {
+                        Palette::text()
+                    } else {
+                        Palette::text_muted()
+                    },
+                    border: Border {
+                        radius: 6.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 }
             })
@@ -194,7 +265,12 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
             .height(24)
             .padding(0),
         )
-        .padding(iced::Padding { top: 0.0, right: 4.0, bottom: 0.0, left: 4.0 })
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 4.0,
+            bottom: 0.0,
+            left: 4.0,
+        })
         .into(),
     );
 
@@ -210,9 +286,16 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
     .style(|_t, status| {
         let hovered = matches!(status, iced::widget::button::Status::Hovered);
         iced::widget::button::Style {
-            background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
+            background: if hovered {
+                Some(Background::Color(Palette::hover()))
+            } else {
+                None
+            },
             text_color: Palette::text_muted(),
-            border: Border { radius: 6.0.into(), ..Default::default() },
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     })
@@ -222,20 +305,35 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
         row![
             scrollable(row(tab_items).spacing(2).width(Length::Shrink))
                 .direction(scrollable::Direction::Horizontal(
-                    scrollable::Scrollbar::new().width(3).scroller_width(3).margin(0),
+                    scrollable::Scrollbar::new()
+                        .width(3)
+                        .scroller_width(3)
+                        .margin(0),
                 ))
                 .style(crate::ui::theme::tab_scrollbar)
                 .width(Length::Fill),
-            container(palette_btn).padding(iced::Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 4.0 }),
+            container(palette_btn).padding(iced::Padding {
+                top: 0.0,
+                right: 8.0,
+                bottom: 0.0,
+                left: 4.0
+            }),
         ]
         .align_y(Alignment::Center)
-        .padding(iced::Padding { top: 4.0, right: 2.0, bottom: 0.0, left: 6.0 })
+        .padding(iced::Padding {
+            top: 4.0,
+            right: 2.0,
+            bottom: 0.0,
+            left: 6.0,
+        })
         .height(40),
     )
     .style(tab_bar_container)
     .width(Length::Fill);
 
-    mouse_area(bar).on_release(Message::Request(RequestMsg::TabDragEnd)).into()
+    mouse_area(bar)
+        .on_release(Message::Request(RequestMsg::TabDragEnd))
+        .into()
 }
 
 #[cfg(test)]
@@ -289,7 +387,11 @@ mod tests {
         fn short_title(title: &str) -> String {
             let mut chars = title.chars();
             let head: String = chars.by_ref().take(20).collect();
-            if chars.next().is_some() { format!("{head}…") } else { head }
+            if chars.next().is_some() {
+                format!("{head}…")
+            } else {
+                head
+            }
         }
 
         for title in [

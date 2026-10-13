@@ -38,7 +38,11 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
         SidebarMsg::NewCollection => {
             let id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().timestamp_millis();
-            let col = Collection { id: id.clone(), name: "New Collection".to_owned(), created_at: now };
+            let col = Collection {
+                id: id.clone(),
+                name: "New Collection".to_owned(),
+                created_at: now,
+            };
             if let Some(db) = &state.db {
                 let _ = storage::create_collection(db, &col);
             }
@@ -101,7 +105,9 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 state.sidebar.rename_backup = None;
             } else {
                 let found = state.requests.iter().find_map(|(col_id, reqs)| {
-                    reqs.iter().find(|r| r.id == id).map(|r| (col_id.clone(), r.name.clone()))
+                    reqs.iter()
+                        .find(|r| r.id == id)
+                        .map(|r| (col_id.clone(), r.name.clone()))
                 });
                 if let Some((collection_id, name)) = found {
                     state.sidebar.rename_backup =
@@ -145,13 +151,28 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                     let _ = handle(state, SidebarMsg::RenameGroup { id, name });
                     state.sidebar.group_renaming = None;
                 }
-                crate::state::sidebar::RenameBackup::Request { id, collection_id, name } => {
-                    let _ = handle(state, SidebarMsg::RenameRequest { id, collection_id, name });
+                crate::state::sidebar::RenameBackup::Request {
+                    id,
+                    collection_id,
+                    name,
+                } => {
+                    let _ = handle(
+                        state,
+                        SidebarMsg::RenameRequest {
+                            id,
+                            collection_id,
+                            name,
+                        },
+                    );
                     state.sidebar.req_renaming = None;
                 }
             }
         }
-        SidebarMsg::RenameRequest { id, collection_id, name } => {
+        SidebarMsg::RenameRequest {
+            id,
+            collection_id,
+            name,
+        } => {
             if let Some(reqs) = state.requests.get_mut(&collection_id) {
                 if let Some(req) = reqs.iter_mut().find(|r| r.id == id) {
                     req.name = name.clone();
@@ -181,12 +202,17 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 .get(&collection_id)
                 .map(|reqs| reqs.iter().map(|r| r.name.clone()).collect())
                 .unwrap_or_default();
-            let cloned = existing.duplicate_in(collection_id.clone(), clone_name(&existing.name, &names));
+            let cloned =
+                existing.duplicate_in(collection_id.clone(), clone_name(&existing.name, &names));
 
             if let Some(db) = &state.db {
                 let _ = storage::create_request(db, &cloned);
             }
-            state.requests.entry(collection_id).or_default().push(cloned.clone());
+            state
+                .requests
+                .entry(collection_id)
+                .or_default()
+                .push(cloned.clone());
             state.sidebar.selected_request = Some(cloned.id.clone());
             // Open straight into the rename field: the clone only earns its
             // keep once it has a name of its own.
@@ -204,7 +230,10 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 &cloned.id,
             ));
         }
-        SidebarMsg::NewGroupIn { parent_id, parent_is_collection } => {
+        SidebarMsg::NewGroupIn {
+            parent_id,
+            parent_is_collection,
+        } => {
             let order =
                 crate::app::tree::next_group_order(&state.groups, &parent_id, parent_is_collection);
             let group = crate::domain::group::Group::new(
@@ -244,14 +273,22 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 }
             }
             state.groups.retain(|g| !group_ids.contains(&g.id));
-            if state.sidebar.context_menu.as_deref().is_some_and(|m| group_ids.iter().any(|g| g == m)) {
+            if state
+                .sidebar
+                .context_menu
+                .as_deref()
+                .is_some_and(|m| group_ids.iter().any(|g| g == m))
+            {
                 state.sidebar.context_menu = None;
             }
             if let Some(db) = &state.db {
                 let _ = storage::delete_group(db, &id);
             }
         }
-        SidebarMsg::NewRequestIn { parent_id, parent_is_collection } => {
+        SidebarMsg::NewRequestIn {
+            parent_id,
+            parent_is_collection,
+        } => {
             let collection_id = if parent_is_collection {
                 parent_id.clone()
             } else {
@@ -260,9 +297,18 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
             if collection_id.is_empty() {
                 return Task::none();
             }
-            let group_id = if parent_is_collection { None } else { Some(parent_id.clone()) };
-            let reqs = state.requests.get(&collection_id).cloned().unwrap_or_default();
-            let order = crate::app::tree::next_request_order(&reqs, &parent_id, parent_is_collection);
+            let group_id = if parent_is_collection {
+                None
+            } else {
+                Some(parent_id.clone())
+            };
+            let reqs = state
+                .requests
+                .get(&collection_id)
+                .cloned()
+                .unwrap_or_default();
+            let order =
+                crate::app::tree::next_request_order(&reqs, &parent_id, parent_is_collection);
             let req = crate::domain::collection::SavedRequest::new_in_group(
                 collection_id.clone(),
                 group_id,
@@ -273,7 +319,11 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 let _ = storage::create_request(db, &req);
             }
             expand_ancestors_for_request(state, &req);
-            state.requests.entry(collection_id).or_default().push(req.clone());
+            state
+                .requests
+                .entry(collection_id)
+                .or_default()
+                .push(req.clone());
             state.sidebar.selected_request = Some(req.id.clone());
             state.tabs.open_request(&req);
         }
@@ -361,8 +411,11 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
         }
         SidebarMsg::ContextMenuOpened(id) => {
             // Right-click toggles: clicking the same row again dismisses.
-            state.sidebar.context_menu =
-                if state.sidebar.context_menu.as_deref() == Some(&id) { None } else { Some(id) };
+            state.sidebar.context_menu = if state.sidebar.context_menu.as_deref() == Some(&id) {
+                None
+            } else {
+                Some(id)
+            };
         }
         SidebarMsg::ContextMenuClosed => {
             state.sidebar.context_menu = None;
@@ -374,8 +427,12 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
             if from == id {
                 return Task::none();
             }
-            let Some(from_loc) = item_location(state, &from) else { return Task::none() };
-            let Some(to_loc) = item_location(state, &id) else { return Task::none() };
+            let Some(from_loc) = item_location(state, &from) else {
+                return Task::none();
+            };
+            let Some(to_loc) = item_location(state, &id) else {
+                return Task::none();
+            };
             if from_loc.same_parent_as(&to_loc) {
                 reorder_siblings(state, &from_loc, &from, &id);
             }
@@ -428,7 +485,12 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                     .environments
                     .iter()
                     .find(|e| e.id == id)
-                    .map(|e| e.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                    .map(|e| {
+                        e.variables
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 rows.sort();
                 state.sidebar.env_editing = Some(id);
@@ -438,12 +500,17 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
         SidebarMsg::EnvironmentNameChanged(id, name) => {
             if let Some(env) = state.environments.iter_mut().find(|e| e.id == id) {
                 env.name = name;
-                if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+                if let Some(db) = &state.db {
+                    let _ = storage::save_environment(db, env);
+                }
             }
         }
         SidebarMsg::EnvironmentVarAdded(env_id) => {
             if state.sidebar.env_editing.as_deref() == Some(&env_id) {
-                state.sidebar.env_edit_rows.push((String::new(), String::new()));
+                state
+                    .sidebar
+                    .env_edit_rows
+                    .push((String::new(), String::new()));
             }
         }
         SidebarMsg::EnvironmentVarKeyChanged(env_id, idx, new_key) => {
@@ -458,7 +525,9 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                     if !trimmed.is_empty() {
                         env.variables.insert(trimmed, row.1.clone());
                     }
-                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+                    if let Some(db) = &state.db {
+                        let _ = storage::save_environment(db, env);
+                    }
                 }
             }
         }
@@ -470,7 +539,9 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                     if !trimmed.is_empty() {
                         env.variables.insert(trimmed, row.1.clone());
                     }
-                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+                    if let Some(db) = &state.db {
+                        let _ = storage::save_environment(db, env);
+                    }
                 }
             }
         }
@@ -539,7 +610,9 @@ fn reorder_siblings(state: &mut AppState, loc: &ItemLocation, from: &str, to: &s
             .groups
             .iter()
             .enumerate()
-            .filter(|(_, g)| g.parent_id == loc.parent_id && g.parent_is_collection == loc.parent_is_collection)
+            .filter(|(_, g)| {
+                g.parent_id == loc.parent_id && g.parent_is_collection == loc.parent_is_collection
+            })
             .map(|(i, _)| i)
             .collect();
         if positions.is_empty() {
@@ -553,8 +626,14 @@ fn reorder_siblings(state: &mut AppState, loc: &ItemLocation, from: &str, to: &s
             }
         }
     } else {
-        let Some(bucket) = state.requests.get_mut(&loc.collection_id) else { return };
-        let parent = if loc.parent_is_collection { None } else { Some(loc.parent_id.as_str()) };
+        let Some(bucket) = state.requests.get_mut(&loc.collection_id) else {
+            return;
+        };
+        let parent = if loc.parent_is_collection {
+            None
+        } else {
+            Some(loc.parent_id.as_str())
+        };
         let positions: Vec<usize> = bucket
             .iter()
             .enumerate()
@@ -580,8 +659,12 @@ fn move_within<T, F>(seq: &mut Vec<T>, from: &str, to: &str, id: F) -> bool
 where
     F: Fn(&T) -> &str,
 {
-    let Some(from_idx) = seq.iter().position(|x| id(x) == from) else { return false };
-    let Some(to_idx) = seq.iter().position(|x| id(x) == to) else { return false };
+    let Some(from_idx) = seq.iter().position(|x| id(x) == from) else {
+        return false;
+    };
+    let Some(to_idx) = seq.iter().position(|x| id(x) == to) else {
+        return false;
+    };
     if from_idx == to_idx {
         return false;
     }
@@ -608,11 +691,17 @@ fn persist_order(state: &mut AppState, loc: &ItemLocation) {
         let mut siblings: Vec<crate::domain::group::Group> = state
             .groups
             .iter()
-            .filter(|g| g.parent_id == loc.parent_id && g.parent_is_collection == loc.parent_is_collection)
+            .filter(|g| {
+                g.parent_id == loc.parent_id && g.parent_is_collection == loc.parent_is_collection
+            })
             .cloned()
             .collect();
         siblings.sort_by_key(|g| {
-            state.groups.iter().position(|x| x.id == g.id).unwrap_or(usize::MAX)
+            state
+                .groups
+                .iter()
+                .position(|x| x.id == g.id)
+                .unwrap_or(usize::MAX)
         });
         for (i, g) in siblings.iter_mut().enumerate() {
             g.sort_order = i as i64;
@@ -626,8 +715,14 @@ fn persist_order(state: &mut AppState, loc: &ItemLocation) {
             }
         }
     } else {
-        let Some(bucket) = state.requests.get_mut(&loc.collection_id) else { return };
-        let parent = if loc.parent_is_collection { None } else { Some(loc.parent_id.as_str()) };
+        let Some(bucket) = state.requests.get_mut(&loc.collection_id) else {
+            return;
+        };
+        let parent = if loc.parent_is_collection {
+            None
+        } else {
+            Some(loc.parent_id.as_str())
+        };
         let mut siblings: Vec<usize> = bucket
             .iter()
             .enumerate()
@@ -638,7 +733,8 @@ fn persist_order(state: &mut AppState, loc: &ItemLocation) {
         for (order, idx) in siblings.iter().enumerate() {
             bucket[*idx].sort_order = order as i64;
             if let Some(db) = &state.db {
-                let _ = storage::update_request_order(db, &bucket[*idx].id, bucket[*idx].sort_order);
+                let _ =
+                    storage::update_request_order(db, &bucket[*idx].id, bucket[*idx].sort_order);
             }
         }
     }
@@ -653,7 +749,9 @@ fn expand_ancestors(state: &mut AppState, parent_id: &str, parent_is_collection:
     if !parent_is_collection {
         let mut current = parent_id;
         loop {
-            let Some(g) = state.groups.iter().find(|g| g.id == current) else { break };
+            let Some(g) = state.groups.iter().find(|g| g.id == current) else {
+                break;
+            };
             state.sidebar.expanded.insert(g.id.clone());
             if g.parent_is_collection {
                 state.sidebar.expanded.insert(g.parent_id.clone());
@@ -664,7 +762,10 @@ fn expand_ancestors(state: &mut AppState, parent_id: &str, parent_is_collection:
     }
 }
 
-fn expand_ancestors_for_request(state: &mut AppState, req: &crate::domain::collection::SavedRequest) {
+fn expand_ancestors_for_request(
+    state: &mut AppState,
+    req: &crate::domain::collection::SavedRequest,
+) {
     if let Some(gid) = &req.group_id {
         expand_ancestors(state, gid, false);
     } else {
@@ -694,9 +795,7 @@ fn subtree_ids(state: &AppState, id: &str) -> Vec<String> {
 /// until it is unique within the collection. Matching is case insensitive
 /// because two names differing only in case are confusing in the sidebar.
 fn clone_name(name: &str, existing: &[String]) -> String {
-    let taken = |candidate: &str| {
-        existing.iter().any(|n| n.eq_ignore_ascii_case(candidate))
-    };
+    let taken = |candidate: &str| existing.iter().any(|n| n.eq_ignore_ascii_case(candidate));
     let base = format!("{name} copy");
     if !taken(&base) {
         return base;
@@ -730,9 +829,15 @@ mod reorder_tests {
     #[test]
     fn move_within_reorders_by_id() {
         #[derive(Clone)]
-        struct Row { id: String }
-        let mut rows: Vec<Row> =
-            ["a", "b", "c", "d"].iter().map(|s| Row { id: (*s).to_owned() }).collect();
+        struct Row {
+            id: String,
+        }
+        let mut rows: Vec<Row> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|s| Row {
+                id: (*s).to_owned(),
+            })
+            .collect();
         let moved = move_within(&mut rows, "b", "d", |r| r.id.as_str());
         assert!(moved);
         let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
@@ -741,23 +846,41 @@ mod reorder_tests {
 
     #[test]
     fn move_within_ignores_unknown_ids() {
-        struct Row { id: String }
-        let mut rows: Vec<Row> =
-            ["a", "b"].iter().map(|s| Row { id: (*s).to_owned() }).collect();
+        struct Row {
+            id: String,
+        }
+        let mut rows: Vec<Row> = ["a", "b"]
+            .iter()
+            .map(|s| Row {
+                id: (*s).to_owned(),
+            })
+            .collect();
         let moved = move_within(&mut rows, "nope", "a", |r| r.id.as_str());
         assert!(!moved);
-        assert_eq!(rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+        assert_eq!(
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
     }
 
     #[test]
     fn moving_a_group_to_its_own_index_is_a_noop() {
         #[derive(Clone)]
-        struct Row { id: String }
-        let mut rows: Vec<Row> =
-            ["a", "b"].iter().map(|s| Row { id: (*s).to_owned() }).collect();
+        struct Row {
+            id: String,
+        }
+        let mut rows: Vec<Row> = ["a", "b"]
+            .iter()
+            .map(|s| Row {
+                id: (*s).to_owned(),
+            })
+            .collect();
         let moved = move_within(&mut rows, "a", "a", |r| r.id.as_str());
         assert!(!moved);
-        assert_eq!(rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+        assert_eq!(
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
     }
 }
 
@@ -772,7 +895,10 @@ mod clone_name_tests {
 
     #[test]
     fn first_clone_of_an_untaken_name_gets_the_copy_suffix() {
-        assert_eq!(clone_name("Get user", &names(&["Get user"])), "Get user copy");
+        assert_eq!(
+            clone_name("Get user", &names(&["Get user"])),
+            "Get user copy"
+        );
     }
 
     #[test]

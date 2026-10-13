@@ -5,11 +5,15 @@
 //! from the low-level `Operation` primitives iced does expose.
 
 pub fn focus_next<Message: Send + 'static>() -> iced::Task<Message> {
-    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::focus_next::<()>())
-        .discard()
+    iced::advanced::widget::operate(
+        iced::advanced::widget::operation::focusable::focus_next::<()>(),
+    )
+    .discard()
 }
 
 pub fn focus_previous<Message: Send + 'static>() -> iced::Task<Message> {
-    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::focus_previous::<()>())
-        .discard()
+    iced::advanced::widget::operate(
+        iced::advanced::widget::operation::focusable::focus_previous::<()>(),
+    )
+    .discard()
 }

@@ -3,6 +3,7 @@ use iced_code_editor::CodeEditor;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+use crate::consts::{VIEWER_PAGE_BYTES, VIEWER_PAGE_LINES};
 use crate::domain::{
     collection::SavedRequest,
     request::{ApiKeyLocation, AuthType, BodyType, FormField, HttpMethod, KeyValue},
@@ -58,6 +59,13 @@ pub struct RequestTabState {
     pub title: String,
     pub method: HttpMethod,
     pub url: String,
+    /// Live content of the URL bar. The bar is a multi-line editor
+    /// constrained to one line (see `RequestMsg::UrlEdited`): unlike the old
+    /// single-line input it never shapes megabytes on paste, because huge
+    /// pastes are routed to import before they can land. `url` stays the
+    /// canonical value — every writer goes through `set_url` so the two can
+    /// never disagree.
+    pub url_editor: text_editor::Content,
     pub headers: Vec<KeyValue>,
     pub params: Vec<KeyValue>,
     pub body_type: BodyType,
@@ -66,6 +74,12 @@ pub struct RequestTabState {
     /// `GraphQL` (the query lives in `body_editor`).
     pub graphql_variables_editor: CodeEditor,
     pub form_fields: Vec<FormField>,
+    /// Expanded editors for big form values, by field id. A value too big for
+    /// an inline cell gets a preview row; expanding opens one bounded page in
+    /// the same code-editor UI as the response viewer, fully editable with
+    /// write-back into the field value. Not persisted: entries die with the
+    /// tab, and stale ids are harmless (looked up per render).
+    pub form_viewers: std::collections::HashMap<String, FormValueEditor>,
     pub auth_type: AuthType,
     pub bearer_token: String,
     pub basic_user: String,
@@ -102,7 +116,8 @@ pub struct RequestTabState {
     /// Readable-text rendering of an HTML body for builds without the
     /// `webview` feature (`None` with the feature on, or for non-HTML).
     /// Set alongside the viewer content; cleared on every new response.
-    pub html_fallback_text: Option<String>,    /// Currently shown page into `viewer_page_starts`.
+    pub html_fallback_text: Option<String>,
+    /// Currently shown page into `viewer_page_starts`.
     pub viewer_page: usize,
     pub viewer_full_is_json: bool,
     pub viewer_processing: bool,
@@ -184,12 +199,14 @@ impl RequestTabState {
             title: "New Request".to_owned(),
             method: HttpMethod::Get,
             url: String::new(),
+            url_editor: text_editor::Content::new(),
             headers: Vec::new(),
             params: Vec::new(),
             body_type: BodyType::None,
             body_editor: make_code_editor("", "json"),
             graphql_variables_editor: make_code_editor("", "json"),
             form_fields: Vec::new(),
+            form_viewers: std::collections::HashMap::new(),
             auth_type: AuthType::None,
             bearer_token: String::new(),
             basic_user: String::new(),
@@ -237,6 +254,15 @@ impl RequestTabState {
         }
     }
 
+    /// Set the URL and rebuild the bar content to match. Use for every
+    /// programmatic replacement (import, param sync, restore) — cursor reset
+    /// is correct there. Per-keystroke typing must NOT go through here: it
+    /// performs into the existing editor so the cursor survives.
+    pub fn set_url(&mut self, url: String) {
+        self.url = url;
+        self.url_editor = text_editor::Content::with_text(&self.url);
+    }
+
     /// Capture the text-editable fields for the undo history.
     pub fn edit_snapshot(&self) -> EditSnapshot {
         EditSnapshot {
@@ -260,6 +286,7 @@ impl RequestTabState {
 
     /// Restore a snapshot produced by [`Self::edit_snapshot`].
     pub fn restore_edit(&mut self, s: EditSnapshot) {
+        self.url_editor = text_editor::Content::with_text(&s.url);
         self.url = s.url;
         self.method = s.method;
         self.params = s.params;
@@ -325,7 +352,11 @@ impl RequestTabState {
     /// Byte range of the page the editor is currently showing, for "showing
     /// A of B" notes. Always within `viewer_full`.
     pub fn viewer_page_span(&self) -> (usize, usize) {
-        let start = self.viewer_page_starts.get(self.viewer_page).copied().unwrap_or(0);
+        let start = self
+            .viewer_page_starts
+            .get(self.viewer_page)
+            .copied()
+            .unwrap_or(0);
         let end = self
             .viewer_page_starts
             .get(self.viewer_page + 1)
@@ -345,11 +376,72 @@ impl RequestTabState {
             let slice = &self.viewer_full[start..end];
             (slice.to_owned(), slice.lines().count().max(1))
         };
-        self.response_truncated_bytes =
-            if count > 1 { Some(self.viewer_full.len()) } else { None };
+        self.response_truncated_bytes = if count > 1 {
+            Some(self.viewer_full.len())
+        } else {
+            None
+        };
         self.response_viewer_lines = lines;
-        let syntax = if self.viewer_full_is_json { "json" } else { "txt" };
+        let syntax = if self.viewer_full_is_json {
+            "json"
+        } else {
+            "txt"
+        };
         self.response_editor = make_code_editor(&display, syntax);
+    }
+
+    /// Toggle the expanded editor for form field `index`. Expanding computes
+    /// page starts once from the current value; preview-mode values have no
+    /// inline input, so nothing outside the editor can mutate the value and
+    /// stale those starts while it is open.
+    pub fn toggle_form_expand(&mut self, index: usize) {
+        let Some(field) = self.form_fields.get(index) else {
+            return;
+        };
+        let id = field.id.clone();
+        if self.form_viewers.remove(&id).is_none() {
+            self.form_viewers
+                .insert(id, FormValueEditor::open(&field.value));
+        }
+    }
+
+    /// Step the expanded viewer for field `index` one page, clamped. The page
+    /// editor is rebuilt once per turn — never per frame — so interaction
+    /// stays bounded no matter how large the value is.
+    pub fn turn_form_page(&mut self, index: usize, next: bool) {
+        let Some(field) = self.form_fields.get(index) else {
+            return;
+        };
+        if let Some(viewer) = self.form_viewers.get_mut(&field.id) {
+            viewer.turn(&field.value, next);
+        }
+    }
+
+    /// Forward an editor event to an expanded editor, writing content edits
+    /// back into the field value. Returns the editor's task and whether the
+    /// value changed (which marks the tab modified).
+    pub fn update_form_viewer(
+        &mut self,
+        index: usize,
+        message: &iced_code_editor::Message,
+    ) -> (iced::Task<iced_code_editor::Message>, bool) {
+        let Some(field) = self.form_fields.get_mut(index) else {
+            return (iced::Task::none(), false);
+        };
+        let id = field.id.clone();
+        let Some(viewer) = self.form_viewers.get_mut(&id) else {
+            return (iced::Task::none(), false);
+        };
+        let (task, changed) = viewer.update_editor(&mut field.value, message);
+        if changed {
+            self.modified = true;
+        }
+        (task, changed)
+    }
+
+    /// Drop an expanded viewer (called when its row is deleted).
+    pub fn drop_form_expand(&mut self, id: &str) {
+        self.form_viewers.remove(id);
     }
 
     /// Byte length of what the response editor is actually showing (which may
@@ -384,8 +476,11 @@ impl RequestTabState {
         // leave it tokenized as plain text.
         self.body_editor
             .set_syntax(body_syntax_for(&self.body_type, &text));
-        let _ = self.body_editor.update(&iced_code_editor::Message::SelectAll);
-        self.body_editor.update(&iced_code_editor::Message::Paste(text))
+        let _ = self
+            .body_editor
+            .update(&iced_code_editor::Message::SelectAll);
+        self.body_editor
+            .update(&iced_code_editor::Message::Paste(text))
     }
 
     /// Re-applies the current palette to **every** code editor this tab owns.
@@ -406,8 +501,10 @@ impl RequestTabState {
         ] {
             editor.set_theme(style);
         }
+        for viewer in self.form_viewers.values_mut() {
+            viewer.apply_theme(style);
+        }
     }
-
 
     pub fn is_websocket(&self) -> bool {
         let u = self.url.trim_start().to_ascii_lowercase();
@@ -419,7 +516,7 @@ impl RequestTabState {
         tab.title = req.name.clone();
         tab.method = req.method.clone();
         let (url, params) = crate::domain::request::reconcile_url_params(&req.url, &req.params);
-        tab.url = url;
+        tab.set_url(url);
         tab.headers = req.headers.clone();
         tab.params = params;
         tab.body_type = req.body_type.clone();
@@ -445,6 +542,195 @@ impl RequestTabState {
     }
 }
 
+/// One expanded form-value editor: the current page into `starts`, plus the
+/// code editor showing exactly that page.
+///
+/// The editor never holds the whole value — page turns rebuild it from the
+/// current slice — so even a multi-megabyte value only ever costs one bounded
+/// page. Edits write straight back into the field value (see
+/// [`FormValueEditor::update_editor`]), so this is a real editor, not a
+/// preview: what you type is what gets sent, saved and copied.
+pub struct FormValueEditor {
+    page: usize,
+    starts: Vec<usize>,
+    /// Byte length of the page the editor currently shows. Tracked instead
+    /// of recomputed so the toolbar and write-back never scan the value.
+    /// Refreshed on every page turn and every committed edit.
+    current_len: usize,
+    editor: CodeEditor,
+}
+
+impl FormValueEditor {
+    /// Open `value` on its first page, computing page starts once.
+    pub fn open(value: &str) -> Self {
+        let starts = page_starts(value);
+        let (start, end) = Self::span_for(&starts, 0, value);
+        let page_text = value.get(start..end).unwrap_or("");
+        // Plain text, not sniffed: this is an arbitrary payload, and syntax
+        // highlighting would tokenize up to a page for no editing benefit.
+        Self {
+            page: 0,
+            starts,
+            current_len: page_text.len(),
+            editor: make_code_editor(page_text, "txt"),
+        }
+    }
+
+    /// Current page, zero-based.
+    pub fn page(&self) -> usize {
+        self.page
+    }
+
+    /// Number of pages (always at least one, even for an empty value).
+    ///
+    /// Derived from the last page turn, so it can lag the value by edits
+    /// made since: cosmetic only, and the next turn recomputes it. Page
+    /// turns (not a bigger limit) are what keep every byte reachable.
+    pub fn page_count(&self) -> usize {
+        self.starts.len().max(1)
+    }
+
+    /// Byte range of the current page within `value`, for display sizes.
+    /// Clamped defensively; the UI never slices with it.
+    pub fn page_span(&self, value: &str) -> (usize, usize) {
+        let start = self
+            .starts
+            .get(self.page)
+            .copied()
+            .unwrap_or(0)
+            .min(value.len());
+        let end = start.saturating_add(self.current_len).min(value.len());
+        (start, end)
+    }
+
+    fn span_for(starts: &[usize], page: usize, value: &str) -> (usize, usize) {
+        let page = page.min(starts.len().max(1) - 1);
+        let start = starts.get(page).copied().unwrap_or(0).min(value.len());
+        let end = starts
+            .get(page + 1)
+            .copied()
+            .unwrap_or(value.len())
+            .clamp(start, value.len());
+        (start, end)
+    }
+
+    /// Show page `page` (clamped), rebuilding the editor for that slice.
+    ///
+    /// Page starts are recomputed from the value first: edits change page
+    /// lengths, so a table from before the edits would mis-slice. The value
+    /// itself is always current (every committed edit splices it at once),
+    /// so recomputing here — once per turn, never per frame or keystroke —
+    /// is both cheap and exact.
+    pub fn show_page(&mut self, value: &str, page: usize) {
+        self.starts = page_starts(value);
+        self.page = page.min(self.page_count() - 1);
+        let (start, end) = Self::span_for(&self.starts, self.page, value);
+        let page_text = value.get(start..end).unwrap_or("");
+        self.current_len = page_text.len();
+        self.editor = make_code_editor(page_text, "txt");
+    }
+
+    /// Step one page forward or back, clamped at the ends.
+    pub fn turn(&mut self, value: &str, next: bool) {
+        let last = self.page_count() - 1;
+        let page = if next {
+            (self.page + 1).min(last)
+        } else {
+            self.page.saturating_sub(1)
+        };
+        self.show_page(value, page);
+    }
+
+    /// The editor rendering the current page.
+    pub fn editor(&self) -> &CodeEditor {
+        &self.editor
+    }
+
+    /// Forward an editor event, writing content edits back into the field
+    /// value. Returns the editor's task and whether the value changed.
+    ///
+    /// Write-back splices only the current page slice, so a keystroke costs
+    /// one page, not the whole value. The span comes from the tracked page
+    /// start/length (both refreshed on every turn and commit), and the
+    /// splice range is re-validated as a char boundary first — with
+    /// `panic = "abort"` a mid-character slice would kill the app, so a
+    /// stale table resyncs instead of slicing.
+    pub fn update_editor(
+        &mut self,
+        value: &mut String,
+        message: &iced_code_editor::Message,
+    ) -> (iced::Task<iced_code_editor::Message>, bool) {
+        let task = self.editor.update(message);
+        if !editor_message_edits_content(message) {
+            return (task, false);
+        }
+        let Some((start, end)) = self.write_span(value) else {
+            // The table disagrees with the value (only possible if the value
+            // changed behind the viewer's back): rebuild from the value
+            // rather than risk a bad splice. Nothing is lost — the value
+            // itself is untouched.
+            self.show_page(value, self.page);
+            return (iced::Task::none(), false);
+        };
+        let new_page = self.editor.content();
+        if value.get(start..end) == Some(new_page.as_str()) {
+            return (task, false);
+        }
+        value.replace_range(start..end, &new_page);
+        self.current_len = new_page.len();
+        (task, true)
+    }
+
+    /// The splice range for the current page, or `None` when the cached
+    /// table no longer lines up with the value.
+    fn write_span(&self, value: &str) -> Option<(usize, usize)> {
+        let start = *self.starts.get(self.page)?;
+        let end = start.checked_add(self.current_len)?;
+        if end > value.len() || !value.is_char_boundary(start) || !value.is_char_boundary(end) {
+            return None;
+        }
+        Some((start, end))
+    }
+
+    fn apply_theme(&mut self, style: iced_code_editor::Style) {
+        self.editor.set_theme(style);
+    }
+
+    fn invalidate(&mut self) {
+        self.editor.invalidate_render_cache();
+    }
+}
+
+/// Returns `true` when a code-editor message changes buffer content (insert,
+/// delete, paste, undo/redo, etc.). Navigation, scrolling, focus, selection
+/// and search messages do NOT count — they shouldn't mark the request as
+/// modified.
+pub fn editor_message_edits_content(message: &iced_code_editor::Message) -> bool {
+    use iced_code_editor::Message as EditorMessage;
+
+    matches!(
+        message,
+        EditorMessage::CharacterInput(_)
+            | EditorMessage::Backspace
+            | EditorMessage::Delete
+            | EditorMessage::Enter
+            | EditorMessage::Tab
+            | EditorMessage::Paste(_)
+            | EditorMessage::Cut
+            | EditorMessage::DeleteSelection
+            | EditorMessage::Undo
+            | EditorMessage::Redo
+            | EditorMessage::MoveLineUp
+            | EditorMessage::MoveLineDown
+            | EditorMessage::ToggleComment
+            | EditorMessage::DuplicateLineDown
+            | EditorMessage::DuplicateLineUp
+            | EditorMessage::ReplaceNext
+            | EditorMessage::ReplaceAll
+            | EditorMessage::ImeCommit(_)
+    )
+}
+
 /// Largest response chunk, in bytes, fed to the editor at once.
 ///
 /// The editor's cost is linear in the number of wrapped visual lines (it
@@ -452,15 +738,7 @@ impl RequestTabState {
 /// tall), so an unbounded body turns into a multi-million-pixel canvas and a
 /// full re-wrap per layout change. Pages stay small enough to stay
 /// interactive; page navigation (not a bigger limit) is what makes a large
-/// body fully inspectable.
-pub const VIEWER_PAGE_BYTES: usize = 512 * 1024;
-
-/// Hard cap on lines per viewer page, independent of byte size.
-///
-/// A page can be small in bytes yet have a pathological line count (e.g. a
-/// chunk of a million newlines), which costs layout time per line regardless
-/// of total size.
-pub const VIEWER_PAGE_LINES: usize = 50_000;
+/// body fully inspectable. Budget lives in `crate::consts`.
 
 /// Byte offsets where each viewer page starts (first is always 0), so the
 /// editor can show any slice of a large body without holding it all.
@@ -566,7 +844,7 @@ pub fn looks_like_json(content: &str) -> bool {
 
 /// Create a themed CodeEditor for the given content and syntax.
 pub fn make_code_editor(content: &str, syntax: &str) -> CodeEditor {
-    use crate::ui::theme::{Palette, MONO};
+    use crate::ui::theme::{MONO, Palette};
     let mut ed = CodeEditor::new(content, syntax);
     ed.set_theme(Palette::code_editor_style());
     ed.set_font(MONO);
@@ -584,7 +862,10 @@ pub struct TabManager {
 
 impl Default for TabManager {
     fn default() -> Self {
-        Self { tabs: vec![RequestTabState::new()], active: 0 }
+        Self {
+            tabs: vec![RequestTabState::new()],
+            active: 0,
+        }
     }
 }
 
@@ -625,9 +906,11 @@ impl TabManager {
             tab.response_editor.invalidate_render_cache();
             tab.pre_request_editor.invalidate_render_cache();
             tab.test_editor.invalidate_render_cache();
+            for viewer in tab.form_viewers.values_mut() {
+                viewer.invalidate();
+            }
         }
     }
-
 
     pub fn reorder(&mut self, from: usize, to: usize) {
         if from == to || from >= self.tabs.len() || to >= self.tabs.len() {
@@ -696,7 +979,9 @@ pub struct TabSnapshot {
     pub active_response_tab: crate::message::ResponseTab,
 }
 
-fn default_jwt_algo() -> String { "HS256".to_owned() }
+fn default_jwt_algo() -> String {
+    "HS256".to_owned()
+}
 
 impl From<&RequestTabState> for TabSnapshot {
     fn from(t: &RequestTabState) -> Self {
@@ -838,8 +1123,16 @@ mod viewer_page_tests {
     fn pages_tile_contiguously_without_gaps() {
         let text = "x".repeat(VIEWER_PAGE_BYTES * 3 + 123);
         let pages = pages_of(&text);
-        assert!(pages.len() >= 3, "expected several pages, got {}", pages.len());
-        assert_eq!(pages.concat(), text, "pages must cover the body exactly once");
+        assert!(
+            pages.len() >= 3,
+            "expected several pages, got {}",
+            pages.len()
+        );
+        assert_eq!(
+            pages.concat(),
+            text,
+            "pages must cover the body exactly once"
+        );
         assert!(pages.iter().all(|p| p.len() <= VIEWER_PAGE_BYTES));
     }
 
@@ -860,11 +1153,18 @@ mod viewer_page_tests {
     #[test]
     fn line_count_is_capped_per_page() {
         let text = "\n".repeat(VIEWER_PAGE_LINES * 3);
-        assert!(text.len() < VIEWER_PAGE_BYTES, "stays under the byte budget");
+        assert!(
+            text.len() < VIEWER_PAGE_BYTES,
+            "stays under the byte budget"
+        );
         let pages = pages_of(&text);
         assert!(pages.len() > 1, "line flood must still page");
         assert_eq!(pages.concat(), text, "no lines may be skipped");
-        assert!(pages.iter().all(|p| p.lines().count() <= VIEWER_PAGE_LINES + 1));
+        assert!(
+            pages
+                .iter()
+                .all(|p| p.lines().count() <= VIEWER_PAGE_LINES + 1)
+        );
     }
 
     #[test]
@@ -885,11 +1185,131 @@ mod viewer_page_tests {
 
         tab.show_viewer_page(1);
         assert_eq!(tab.viewer_page, 1);
-        assert_eq!(tab.response_editor.content(), &huge[tab.viewer_page_span().0..]);
+        assert_eq!(
+            tab.response_editor.content(),
+            &huge[tab.viewer_page_span().0..]
+        );
 
         // Out-of-range pages clamp instead of panicking.
         tab.show_viewer_page(99);
         assert_eq!(tab.viewer_page, 1);
+    }
+
+    #[test]
+    fn form_expand_toggles_and_pages() {
+        use crate::domain::request::{FormField, FormFieldType};
+        use iced_code_editor::Message as EditorMessage;
+
+        let value = "v".repeat(VIEWER_PAGE_BYTES + 10);
+        let mut tab = RequestTabState::new();
+        tab.form_fields.push(FormField {
+            id: "f1".to_owned(),
+            key: "doc".to_owned(),
+            value: value.clone(),
+            field_type: FormFieldType::Text,
+            enabled: true,
+            file_name: None,
+            file_data: None,
+            mime_type: None,
+        });
+
+        assert!(!tab.form_viewers.contains_key("f1"));
+        tab.toggle_form_expand(0);
+        {
+            let viewer = tab.form_viewers.get("f1").expect("expanded");
+            assert_eq!(viewer.page(), 0);
+            assert_eq!(viewer.page_count(), 2);
+            let (start, end) = viewer.page_span(&value);
+            assert_eq!(viewer.editor().content(), value[start..end]);
+        }
+
+        tab.turn_form_page(0, true);
+        assert_eq!(tab.form_viewers["f1"].page(), 1);
+        {
+            let viewer = &tab.form_viewers["f1"];
+            let (start, end) = viewer.page_span(&value);
+            assert_eq!(viewer.editor().content(), value[start..end]);
+        }
+        tab.turn_form_page(0, true);
+        assert_eq!(tab.form_viewers["f1"].page(), 1, "clamps at last page");
+        tab.turn_form_page(0, false);
+        assert_eq!(tab.form_viewers["f1"].page(), 0);
+
+        // Typing in the page editor writes back into the field value at once.
+        // (`Paste`, like the body-replacement path, needs no focus; character
+        // input does, which a headless test can't provide.)
+        assert!(!tab.modified);
+        let _ = tab.update_form_viewer(0, &EditorMessage::Paste("x".to_owned()));
+        assert_eq!(tab.form_fields[0].value.len(), value.len() + 1);
+        assert!(tab.form_fields[0].value.contains('x'));
+        assert!(tab.modified, "a content edit marks the tab modified");
+        let (start, end) = tab.form_viewers["f1"].page_span(&tab.form_fields[0].value);
+        assert_eq!(
+            tab.form_viewers["f1"].editor().content(),
+            tab.form_fields[0].value[start..end]
+        );
+
+        // Navigation is not a content edit: no write-back, no modified flag.
+        let clean = tab.form_fields[0].value.clone();
+        tab.modified = false;
+        let _ = tab.update_form_viewer(0, &EditorMessage::SelectAll);
+        assert_eq!(tab.form_fields[0].value, clean);
+        assert!(!tab.modified);
+
+        // The editor's own undo reverts the value through the same path.
+        let _ = tab.update_form_viewer(0, &EditorMessage::Undo);
+        assert_eq!(tab.form_fields[0].value, value);
+
+        // Growing a page past the budget still pages cleanly: every byte
+        // stays reachable and nothing is duplicated or lost.
+        let _ = tab.update_form_viewer(0, &EditorMessage::SelectAll);
+        let _ = tab.update_form_viewer(
+            0,
+            &EditorMessage::Paste("y".repeat(VIEWER_PAGE_BYTES + 100)),
+        );
+        let grown = tab.form_fields[0].value.clone();
+        assert!(grown.len() > VIEWER_PAGE_BYTES);
+        tab.turn_form_page(0, true);
+        assert!(tab.form_viewers["f1"].page_count() > 1);
+        let mut covered = String::new();
+        let pages = tab.form_viewers["f1"].page_count();
+        for page in 0..pages {
+            tab.form_viewers
+                .get_mut("f1")
+                .expect("open")
+                .show_page(&grown, page);
+            covered.push_str(&tab.form_viewers["f1"].editor().content());
+        }
+        assert_eq!(
+            covered, grown,
+            "pages must tile the edited value exactly once"
+        );
+
+        // Toggling again collapses; unknown indices are no-ops.
+        tab.toggle_form_expand(0);
+        assert!(!tab.form_viewers.contains_key("f1"));
+        tab.toggle_form_expand(99);
+        tab.turn_form_page(99, true);
+        let _ = tab.update_form_viewer(99, &EditorMessage::SelectAll);
+        tab.drop_form_expand("missing");
+    }
+
+    #[test]
+    fn editor_edit_classifier_ignores_navigation_and_selection() {
+        use iced_code_editor::{ArrowDirection, Message as EditorMessage};
+
+        assert!(editor_message_edits_content(
+            &EditorMessage::CharacterInput('x')
+        ));
+        assert!(editor_message_edits_content(&EditorMessage::Paste(
+            "x".to_owned()
+        )));
+        assert!(!editor_message_edits_content(&EditorMessage::SelectAll));
+        assert!(!editor_message_edits_content(&EditorMessage::Copy));
+        assert!(!editor_message_edits_content(&EditorMessage::ArrowKey(
+            ArrowDirection::Right,
+            false
+        )));
     }
 }
 

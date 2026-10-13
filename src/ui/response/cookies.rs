@@ -1,9 +1,13 @@
 use iced::{
-    widget::{column, container, row, scrollable, text},
     Background, Border, Element, Length,
+    widget::{column, container, row, scrollable, text},
 };
 
-use crate::{message::Message, state::tabs::RequestTabState, ui::{theme::Palette, widgets::kv_table}};
+use crate::{
+    message::Message,
+    state::tabs::RequestTabState,
+    ui::{theme::Palette, widgets::kv_table},
+};
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let Some(resp) = &tab.response else {
@@ -36,17 +40,26 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         container(
             row![
                 container(
-                    text("#").size(10).color(Palette::text_subtle()).font(crate::ui::theme::MONO),
+                    text("#")
+                        .size(10)
+                        .color(Palette::text_subtle())
+                        .font(crate::ui::theme::MONO),
                 )
                 .width(32)
                 .padding([3, 4]),
                 container(
-                    text("Name").size(10).color(Palette::text_subtle()).font(crate::ui::theme::MONO),
+                    text("Name")
+                        .size(10)
+                        .color(Palette::text_subtle())
+                        .font(crate::ui::theme::MONO),
                 )
                 .width(180)
                 .padding([3, 4]),
                 container(
-                    text("Value").size(10).color(Palette::text_subtle()).font(crate::ui::theme::MONO),
+                    text("Value")
+                        .size(10)
+                        .color(Palette::text_subtle())
+                        .font(crate::ui::theme::MONO),
                 )
                 .width(Length::Fill)
                 .padding([3, 4]),

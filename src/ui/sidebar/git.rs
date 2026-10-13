@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_input, Space},
     Background, Border, Color, Element, Length, Padding,
+    widget::{Space, button, column, container, row, scrollable, text, text_input},
 };
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     services::repos::LOCAL_ID,
     ui::{
         icons,
-        theme::{Palette, MONO},
+        theme::{MONO, Palette},
         tree_label::{tree_label, tree_label_styled},
     },
 };
@@ -44,7 +44,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 fn title_bar() -> Element<'static, Message> {
     container(
         row![
-            text("Source Control").size(crate::ui::theme::TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+            text("Source Control")
+                .size(crate::ui::theme::TEXT_LG)
+                .color(Palette::text())
+                .font(crate::ui::theme::UI_FONT_MEDIUM),
             Space::new().width(Length::Fill),
             button(text("↻").size(14).color(Palette::text_muted()))
                 .on_press(Message::Git(GitMsg::Refresh))
@@ -65,14 +68,27 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> container::Container<'a
         .width(Length::Fill)
         .style(|_| container::Style {
             background: Some(Background::Color(Palette::surface())),
-            border: Border { color: Palette::border_subtle(), width: 1.0, radius: 8.0.into(), ..Default::default() },
+            border: Border {
+                color: Palette::border_subtle(),
+                width: 1.0,
+                radius: 8.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
 }
 
-fn card_header(icon: char, label: &'static str, count: Option<usize>, actions: Option<Element<'static, Message>>) -> Element<'static, Message> {
+fn card_header(
+    icon: char,
+    label: &'static str,
+    count: Option<usize>,
+    actions: Option<Element<'static, Message>>,
+) -> Element<'static, Message> {
     let mut h = row![
-        text(icon).size(13).color(Palette::text_muted()).font(icons::ICON_FONT),
+        text(icon)
+            .size(13)
+            .color(Palette::text_muted())
+            .font(icons::ICON_FONT),
         text(label).size(11).color(Palette::text()),
     ]
     .spacing(5)
@@ -85,7 +101,12 @@ fn card_header(icon: char, label: &'static str, count: Option<usize>, actions: O
         h = h.push(a);
     }
     container(h)
-        .padding(Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 0.0 })
+        .padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 6.0,
+            left: 0.0,
+        })
         .width(Length::Fill)
         .into()
 }
@@ -93,14 +114,38 @@ fn card_header(icon: char, label: &'static str, count: Option<usize>, actions: O
 // ── Repository card (branch + status + commit + sync) ──
 
 fn repo_card(state: &AppState) -> Element<'_, Message> {
-    let branch = state.git_status.as_ref().map(|s| s.branch.clone()).unwrap_or_else(|| "main".to_owned());
-    let changes = state.git_status.as_ref().map(|s| s.changes.len()).unwrap_or(0);
-    let (ahead, behind) = state.git_status.as_ref().map(|s| (s.ahead, s.behind)).unwrap_or((0, 0));
-    let has_remote = state.git_status.as_ref().and_then(|s| s.remote_url.as_ref()).is_some();
+    let branch = state
+        .git_status
+        .as_ref()
+        .map(|s| s.branch.clone())
+        .unwrap_or_else(|| "main".to_owned());
+    let changes = state
+        .git_status
+        .as_ref()
+        .map(|s| s.changes.len())
+        .unwrap_or(0);
+    let (ahead, behind) = state
+        .git_status
+        .as_ref()
+        .map(|s| (s.ahead, s.behind))
+        .unwrap_or((0, 0));
+    let has_remote = state
+        .git_status
+        .as_ref()
+        .and_then(|s| s.remote_url.as_ref())
+        .is_some();
 
     // Status row: branch + clean/dirty + ahead/behind
-    let status_color = if changes == 0 { Palette::SUCCESS } else { Palette::WARNING };
-    let status_text: String = if changes == 0 { "Clean".to_owned() } else { format!("{} modified", changes) };
+    let status_color = if changes == 0 {
+        Palette::SUCCESS
+    } else {
+        Palette::WARNING
+    };
+    let status_text: String = if changes == 0 {
+        "Clean".to_owned()
+    } else {
+        format!("{} modified", changes)
+    };
 
     let mut status_row = row![].spacing(4).align_y(iced::Alignment::Center);
     status_row = status_row.push(icons::git_branch().size(11).color(Palette::text_muted()));
@@ -116,21 +161,26 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
 
     if changes > 0 {
         status_row = status_row.push(
-            container(text("\u{25CF}").size(8).color(Palette::WARNING))
-                .padding(Padding { top: 0.0, right: 2.0, bottom: 0.0, left: 0.0 }),
+            container(text("\u{25CF}").size(8).color(Palette::WARNING)).padding(Padding {
+                top: 0.0,
+                right: 2.0,
+                bottom: 0.0,
+                left: 0.0,
+            }),
         );
     }
 
     status_row = status_row.push(
-        container(
-            text(status_text).size(9).color(status_color),
-        )
-        .style(move |_| container::Style {
-            background: Some(Background::Color(soft_bg(status_color))),
-            border: Border { radius: 4.0.into(), ..Default::default() },
-            ..Default::default()
-        })
-        .padding([1, 5]),
+        container(text(status_text).size(9).color(status_color))
+            .style(move |_| container::Style {
+                background: Some(Background::Color(soft_bg(status_color))),
+                border: Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .padding([1, 5]),
     );
 
     // Commit area
@@ -154,28 +204,48 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
         .center_x(Length::Fill)
         .center_y(Length::Fill),
     )
-    .on_press_maybe(if can_commit { Some(Message::Git(GitMsg::Commit)) } else { None })
+    .on_press_maybe(if can_commit {
+        Some(Message::Git(GitMsg::Commit))
+    } else {
+        None
+    })
     .style(commit_style)
     // Fixed height + vertically centred content: iced places button content at
     // the top padding edge and adds no centering of its own (issue #29).
-    .height(Length::Fixed(crate::ui::widgets::centered_button::BUTTON_HEIGHT))
+    .height(Length::Fixed(
+        crate::ui::widgets::centered_button::BUTTON_HEIGHT,
+    ))
     .padding([0, 14])
     .width(Length::Fill);
 
     // Sync row
     let mut sync_row = row![].spacing(4);
     if ahead > 0 {
-        sync_row = sync_row.push(text(format!("↑{ahead}")).size(9).color(Palette::accent()).font(MONO));
+        sync_row = sync_row.push(
+            text(format!("↑{ahead}"))
+                .size(9)
+                .color(Palette::accent())
+                .font(MONO),
+        );
     }
     if behind > 0 {
-        sync_row = sync_row.push(text(format!("↓{behind}")).size(9).color(Color::from_rgb(0.9, 0.5, 0.2)).font(MONO));
+        sync_row = sync_row.push(
+            text(format!("↓{behind}"))
+                .size(9)
+                .color(Color::from_rgb(0.9, 0.5, 0.2))
+                .font(MONO),
+        );
     }
     sync_row = sync_row.push(Space::new().width(Length::Fill));
     if has_remote {
         sync_row = sync_row.push(ghost_button("Fetch", Message::Git(GitMsg::Fetch)));
         sync_row = sync_row.push(ghost_button("Pull", Message::Git(GitMsg::Pull)));
         sync_row = sync_row.push(primary_button("Push", Message::Git(GitMsg::Push)));
-    } else if state.git_repos.iter().any(|r| r.id == state.git_active_repo && r.id != LOCAL_ID) {
+    } else if state
+        .git_repos
+        .iter()
+        .any(|r| r.id == state.git_active_repo && r.id != LOCAL_ID)
+    {
         sync_row = sync_row.push(
             row![
                 text_input("Remote", &state.git_remote_input)
@@ -192,20 +262,32 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
     }
 
     // Branches (compact)
-    let current_branch = state.git_status.as_ref().map(|s| s.branch.clone()).unwrap_or_default();
+    let current_branch = state
+        .git_status
+        .as_ref()
+        .map(|s| s.branch.clone())
+        .unwrap_or_default();
     let mut branch_col = column![].spacing(1);
     for b in state.git_branches.iter().take(20) {
         let is_current = b.name == current_branch;
         let name = b.name.clone();
         let row = button(
             row![
-                text("\u{25CF}").size(9).color(if is_current { Palette::accent() } else { Palette::text_subtle() }),
+                text("\u{25CF}").size(9).color(if is_current {
+                    Palette::accent()
+                } else {
+                    Palette::text_subtle()
+                }),
                 tree_label_styled(
                     b.name.clone(),
                     11.0,
                     state.sidebar_width - 70.0,
                     Some(MONO),
-                    if is_current { Palette::text() } else { Palette::text_muted() },
+                    if is_current {
+                        Palette::text()
+                    } else {
+                        Palette::text_muted()
+                    },
                 ),
             ]
             .spacing(5)
@@ -239,19 +321,34 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
             msg_input,
             Space::new().height(4),
             commit_btn,
-            if !has_remote && state.git_repos.iter().any(|r| r.id == state.git_active_repo && r.id != LOCAL_ID) {
+            if !has_remote
+                && state
+                    .git_repos
+                    .iter()
+                    .any(|r| r.id == state.git_active_repo && r.id != LOCAL_ID)
+            {
                 container(sync_row)
-                    .padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 })
+                    .padding(Padding {
+                        top: 6.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: 0.0,
+                    })
                     .into()
             } else if has_remote {
                 container(sync_row)
-                    .padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 })
+                    .padding(Padding {
+                        top: 6.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: 0.0,
+                    })
                     .into()
             } else {
                 {
-                let e: Element<'_, Message> = Space::new().height(0).into();
-                e
-            }
+                    let e: Element<'_, Message> = Space::new().height(0).into();
+                    e
+                }
             },
             if !state.git_branches.is_empty() {
                 container(column![
@@ -263,9 +360,9 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
                 .into()
             } else {
                 {
-                let e: Element<'_, Message> = Space::new().height(0).into();
-                e
-            }
+                    let e: Element<'_, Message> = Space::new().height(0).into();
+                    e
+                }
             },
         ]
         .spacing(0)
@@ -277,7 +374,11 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
 // ── Changes card ──
 
 fn changes_card(state: &AppState) -> Element<'_, Message> {
-    let changes = state.git_status.as_ref().map(|s| s.changes.as_slice()).unwrap_or(&[]);
+    let changes = state
+        .git_status
+        .as_ref()
+        .map(|s| s.changes.as_slice())
+        .unwrap_or(&[]);
 
     let mut content = column![].spacing(1);
 
@@ -286,7 +387,9 @@ fn changes_card(state: &AppState) -> Element<'_, Message> {
             container(
                 row![
                     text("\u{2714}").size(12).color(Palette::SUCCESS),
-                    text(" Working tree clean").size(11).color(Palette::text_subtle()),
+                    text(" Working tree clean")
+                        .size(11)
+                        .color(Palette::text_subtle()),
                 ]
                 .spacing(4)
                 .align_y(iced::Alignment::Center),
@@ -321,18 +424,28 @@ fn changes_card(state: &AppState) -> Element<'_, Message> {
         // code destroys alignment and stretches the panel. The panel scrolls
         // vertically; this box scrolls both ways.
         let diff_container = container(
-            scrollable(text(diff.clone()).size(10).font(MONO).color(Palette::text_muted()))
-                .height(160)
-                .direction(iced::widget::scrollable::Direction::Both {
-                    vertical: crate::ui::theme::grabbable_scrollbar(),
-                    horizontal: crate::ui::theme::grabbable_scrollbar(),
-                })
-                .style(crate::ui::theme::hidden_scrollbar),
+            scrollable(
+                text(diff.clone())
+                    .size(10)
+                    .font(MONO)
+                    .color(Palette::text_muted()),
+            )
+            .height(160)
+            .direction(iced::widget::scrollable::Direction::Both {
+                vertical: crate::ui::theme::grabbable_scrollbar(),
+                horizontal: crate::ui::theme::grabbable_scrollbar(),
+            })
+            .style(crate::ui::theme::hidden_scrollbar),
         )
         .padding([6, 8])
         .style(|_| container::Style {
             background: Some(Background::Color(Palette::background())),
-            border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into(), ..Default::default() },
+            border: Border {
+                color: Palette::border(),
+                width: 1.0,
+                radius: 6.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         });
         content = content.push(Space::new().height(2));
@@ -372,9 +485,7 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
         state
             .git_log
             .iter()
-            .filter(|c| {
-                contains_ignore_case(&c.message, &q) || contains_ignore_case(&c.id, &q)
-            })
+            .filter(|c| contains_ignore_case(&c.message, &q) || contains_ignore_case(&c.id, &q))
             .take(40)
             .collect()
     };
@@ -395,7 +506,12 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
 
     if filtered.is_empty() {
         content = content.push(
-            container(text("No commits yet").size(11).color(Palette::text_subtle())).padding([2, 0]),
+            container(
+                text("No commits yet")
+                    .size(11)
+                    .color(Palette::text_subtle()),
+            )
+            .padding([2, 0]),
         );
     } else {
         // Read the clock once per frame instead of twice per row.
@@ -410,7 +526,13 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
             let when = chrono::DateTime::from_timestamp(commit.timestamp, 0);
             let date_group = date_label(&when, now);
             let is_last = i == filtered.len() - 1;
-            let msg_first_line = commit.message.trim().lines().next().unwrap_or("").to_owned();
+            let msg_first_line = commit
+                .message
+                .trim()
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_owned();
             let id = commit.id.clone();
 
             if date_group != last_date_group {
@@ -418,7 +540,9 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
                     content = content.push(Space::new().height(2));
                 }
                 content = content.push(
-                    text(date_group.clone()).size(9).color(Palette::text_subtle()),
+                    text(date_group.clone())
+                        .size(9)
+                        .color(Palette::text_subtle()),
                 );
                 last_date_group = date_group;
             }
@@ -441,16 +565,31 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
                 .spacing(3)
                 .align_y(iced::Alignment::Center),
             )
-            .padding(Padding { top: 3.0, right: 0.0, bottom: 3.0, left: 0.0 })
+            .padding(Padding {
+                top: 3.0,
+                right: 0.0,
+                bottom: 3.0,
+                left: 0.0,
+            })
             .width(Length::Fill);
 
             content = content.push(row);
 
             if !is_last {
                 content = content.push(
-                    container(text("\u{2502}").size(10).color(Palette::border_subtle()).font(MONO))
-                        .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 6.0 })
-                        .width(Length::Fill),
+                    container(
+                        text("\u{2502}")
+                            .size(10)
+                            .color(Palette::border_subtle())
+                            .font(MONO),
+                    )
+                    .padding(Padding {
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: 6.0,
+                    })
+                    .width(Length::Fill),
                 );
             }
         }
@@ -477,7 +616,9 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
     for repo in &state.git_repos {
         let active = repo.id == state.git_active_repo;
         let summary = summary_for(state, &repo.id);
-        let branch = summary.map(|s| s.branch.clone()).unwrap_or_else(|| "-".to_owned());
+        let branch = summary
+            .map(|s| s.branch.clone())
+            .unwrap_or_else(|| "-".to_owned());
         let changes = summary.map(|s| s.changes).unwrap_or(0);
 
         let mut line = row![
@@ -489,9 +630,11 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
             tree_label(repo.name.clone(), 11.0, state.sidebar_width - 140.0),
             // Shrink-sized: short branches cost nothing, long ones clip at
             // the panel edge instead of wrapping. Single-line either way.
-            text(branch).size(9).color(Palette::text_subtle()).font(MONO).wrapping(
-                iced_core::text::Wrapping::None,
-            ),
+            text(branch)
+                .size(9)
+                .color(Palette::text_subtle())
+                .font(MONO)
+                .wrapping(iced_core::text::Wrapping::None,),
         ]
         .spacing(5)
         .align_y(iced::Alignment::Center);
@@ -508,7 +651,10 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
 
         let mut entry = row![select].spacing(2).align_y(iced::Alignment::Center);
         if repo.id != LOCAL_ID {
-            entry = entry.push(icon_btn("\u{2716}", Message::Git(GitMsg::RemoveRepo(repo.id.clone()))));
+            entry = entry.push(icon_btn(
+                "\u{2716}",
+                Message::Git(GitMsg::RemoveRepo(repo.id.clone())),
+            ));
         }
         content = content.push(entry);
     }
@@ -534,7 +680,12 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
 
     card(
         column![
-            card_header('\u{e0d7}', "Repositories", Some(state.git_repos.len()), None),
+            card_header(
+                '\u{e0d7}',
+                "Repositories",
+                Some(state.git_repos.len()),
+                None
+            ),
             content,
             Space::new().height(6),
             clone_form,
@@ -587,7 +738,10 @@ fn count_badge(n: usize) -> Element<'static, Message> {
     container(text(n.to_string()).size(9).color(Palette::text()))
         .style(|_| container::Style {
             background: Some(Background::Color(Palette::surface_high())),
-            border: Border { radius: 8.0.into(), ..Default::default() },
+            border: Border {
+                radius: 8.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .padding([1, 6])
@@ -601,16 +755,17 @@ fn badge(state: &str) -> Element<'static, Message> {
         "renamed" => ("R", Palette::PUT),
         _ => ("M", Palette::WARNING),
     };
-    container(
-        text(ch).size(10).color(color).font(MONO),
-    )
-    .style(move |_| container::Style {
-        background: Some(Background::Color(soft_bg(color))),
-        border: Border { radius: 3.0.into(), ..Default::default() },
-        ..Default::default()
-    })
-    .padding([1, 5])
-    .into()
+    container(text(ch).size(10).color(color).font(MONO))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(soft_bg(color))),
+            border: Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .padding([1, 5])
+        .into()
 }
 
 /// `now` is passed in so the caller can read the clock once per frame rather
@@ -619,7 +774,9 @@ fn date_label(
     when: &Option<chrono::DateTime<chrono::Utc>>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    let Some(dt) = when else { return "Unknown".to_owned() };
+    let Some(dt) = when else {
+        return "Unknown".to_owned();
+    };
     if dt.date_naive() == now.date_naive() {
         "Today".to_owned()
     } else if dt.date_naive() == (now - chrono::Duration::days(1)).date_naive() {
@@ -631,46 +788,77 @@ fn date_label(
 
 /// `now` is passed in for the same reason as `date_label`.
 fn time_ago(timestamp: i64, now: chrono::DateTime<chrono::Utc>) -> String {
-    let Some(dt) = chrono::DateTime::from_timestamp(timestamp, 0) else { return "".to_owned() };
+    let Some(dt) = chrono::DateTime::from_timestamp(timestamp, 0) else {
+        return "".to_owned();
+    };
     let diff = now - dt;
     let secs = diff.num_seconds();
-    if secs < 60 { return format!("{secs}s"); }
+    if secs < 60 {
+        return format!("{secs}s");
+    }
     let mins = diff.num_minutes();
-    if mins < 60 { return format!("{mins}m"); }
+    if mins < 60 {
+        return format!("{mins}m");
+    }
     let hours = diff.num_hours();
-    if hours < 24 { return format!("{hours}h"); }
+    if hours < 24 {
+        return format!("{hours}h");
+    }
     let days = diff.num_days();
-    if days < 7 { return format!("{days}d"); }
+    if days < 7 {
+        return format!("{days}d");
+    }
     dt.format("%b %d").to_string()
 }
 
 fn soft_bg(color: Color) -> Color {
     if Palette::is_dark() {
-        Color { r: color.r * 0.22, g: color.g * 0.22, b: color.b * 0.24, a: 1.0 }
+        Color {
+            r: color.r * 0.22,
+            g: color.g * 0.22,
+            b: color.b * 0.24,
+            a: 1.0,
+        }
     } else {
-        Color { r: color.r + (1.0 - color.r) * 0.78, g: color.g + (1.0 - color.g) * 0.78, b: color.b + (1.0 - color.b) * 0.76, a: 1.0 }
+        Color {
+            r: color.r + (1.0 - color.r) * 0.78,
+            g: color.g + (1.0 - color.g) * 0.78,
+            b: color.b + (1.0 - color.b) * 0.76,
+            a: 1.0,
+        }
     }
 }
 
 // ── Styles ──
 
-fn commit_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+fn commit_style(
+    _t: &iced::Theme,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
     let accent = Palette::accent();
     let bg = match status {
         iced::widget::button::Status::Hovered => Palette::accent_hover(),
-        iced::widget::button::Status::Disabled => Color { r: 0.3, g: 0.3, b: 0.3, a: 0.4 },
+        iced::widget::button::Status::Disabled => Color {
+            r: 0.3,
+            g: 0.3,
+            b: 0.3,
+            a: 0.4,
+        },
         _ => accent,
     };
     iced::widget::button::Style {
         background: Some(Background::Color(bg)),
         text_color: Color::WHITE,
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border {
+            radius: 6.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
 
 fn primary_button(label: &str, msg: Message) -> Element<'static, Message> {
-    use crate::ui::widgets::centered_button::{centered_button, BUTTON_HEIGHT_SM};
+    use crate::ui::widgets::centered_button::{BUTTON_HEIGHT_SM, centered_button};
     centered_button(
         text(label.to_owned()).size(11).color(Color::WHITE),
         BUTTON_HEIGHT_SM,
@@ -681,7 +869,10 @@ fn primary_button(label: &str, msg: Message) -> Element<'static, Message> {
     .into()
 }
 
-fn primary_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
+fn primary_style(
+    _t: &iced::Theme,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
     let accent = Palette::accent();
     let bg = match status {
         iced::widget::button::Status::Hovered => Palette::accent_hover(),
@@ -690,36 +881,43 @@ fn primary_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced
     iced::widget::button::Style {
         background: Some(Background::Color(bg)),
         text_color: Color::WHITE,
-        border: Border { radius: 5.0.into(), ..Default::default() },
+        border: Border {
+            radius: 5.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
 
 fn ghost_button(label: &str, msg: Message) -> Element<'static, Message> {
-    use crate::ui::widgets::centered_button::{centered_button, BUTTON_HEIGHT_SM};
+    use crate::ui::widgets::centered_button::{BUTTON_HEIGHT_SM, centered_button};
     centered_button(
         text(label.to_owned()).size(11).color(Palette::text()),
         BUTTON_HEIGHT_SM,
         8.0,
     )
-        .on_press(msg)
-        .style(|_t, status| {
-            let hovered = matches!(status, iced::widget::button::Status::Hovered);
-            iced::widget::button::Style {
-                background: Some(Background::Color(if hovered {
-                    Palette::surface_high()
-                } else {
-                    Palette::surface_raised()
-                })),
-                text_color: Palette::text(),
-                border: Border { color: Palette::border(), width: 1.0, radius: 5.0.into() },
-                ..Default::default()
-            }
-        })
-        // No .padding() here: `centered_button` already sets the horizontal
-        // padding and a zero vertical padding, and a later call would override
-        // both and reintroduce the off-centre label.
-        .into()
+    .on_press(msg)
+    .style(|_t, status| {
+        let hovered = matches!(status, iced::widget::button::Status::Hovered);
+        iced::widget::button::Style {
+            background: Some(Background::Color(if hovered {
+                Palette::surface_high()
+            } else {
+                Palette::surface_raised()
+            })),
+            text_color: Palette::text(),
+            border: Border {
+                color: Palette::border(),
+                width: 1.0,
+                radius: 5.0.into(),
+            },
+            ..Default::default()
+        }
+    })
+    // No .padding() here: `centered_button` already sets the horizontal
+    // padding and a zero vertical padding, and a later call would override
+    // both and reintroduce the off-centre label.
+    .into()
 }
 
 fn icon_btn(glyph: &str, msg: Message) -> Element<'static, Message> {
@@ -733,7 +931,11 @@ fn icon_btn(glyph: &str, msg: Message) -> Element<'static, Message> {
                 } else {
                     None
                 },
-                text_color: if hovered { Palette::text() } else { Palette::text_muted() },
+                text_color: if hovered {
+                    Palette::text()
+                } else {
+                    Palette::text_muted()
+                },
                 ..Default::default()
             }
         })
@@ -749,7 +951,10 @@ fn tool_text(label: &str, msg: Message) -> Element<'static, Message> {
         .into()
 }
 
-fn repo_row_style(status: iced::widget::button::Status, active: bool) -> iced::widget::button::Style {
+fn repo_row_style(
+    status: iced::widget::button::Status,
+    active: bool,
+) -> iced::widget::button::Style {
     let hovered = matches!(status, iced::widget::button::Status::Hovered);
     iced::widget::button::Style {
         background: if active {
@@ -761,7 +966,11 @@ fn repo_row_style(status: iced::widget::button::Status, active: bool) -> iced::w
         },
         text_color: Palette::text(),
         border: Border {
-            color: if active { Palette::accent() } else { Color::TRANSPARENT },
+            color: if active {
+                Palette::accent()
+            } else {
+                Color::TRANSPARENT
+            },
             width: if active { 1.0 } else { 0.0 },
             radius: 4.0.into(),
         },

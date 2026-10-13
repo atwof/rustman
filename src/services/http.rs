@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use base64::{engine::general_purpose, Engine as _};
-use hmac::{digest::KeyInit, Hmac, Mac};
+use base64::{Engine as _, engine::general_purpose};
+use hmac::{Hmac, Mac, digest::KeyInit};
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 use sha2::Sha256;
 use std::str::FromStr;
 
 use crate::domain::collection::SavedRequest;
+use crate::domain::environment::{AppEnvironment, substitute};
 use crate::domain::request::{ApiKeyLocation, AuthType, BodyType};
 use crate::domain::response::HttpResponse;
-use crate::domain::environment::{substitute, AppEnvironment};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -35,8 +35,7 @@ fn make_jwt(subject: &str, secret: &str) -> Result<String, String> {
     );
     let payload = base64url(payload_json.as_bytes());
     let signing_input = format!("{header}.{payload}");
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .map_err(|e| e.to_string())?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| e.to_string())?;
     mac.update(signing_input.as_bytes());
     let sig = base64url(&mac.finalize().into_bytes());
     Ok(format!("{signing_input}.{sig}"))
@@ -61,11 +60,17 @@ pub async fn send(
     match do_send(client, &tab_id, req, env, default_timeout_ms).await {
         Ok(mut resp) => {
             resp.duration_ms = start.elapsed().as_millis() as u64;
-            HttpResult { tab_id, response: resp }
+            HttpResult {
+                tab_id,
+                response: resp,
+            }
         }
         Err(e) => HttpResult {
             tab_id,
-            response: HttpResponse { error: Some(e), ..Default::default() },
+            response: HttpResponse {
+                error: Some(e),
+                ..Default::default()
+            },
         },
     }
 }
@@ -125,7 +130,11 @@ async fn do_send(
         .map_err(|_| format!("Invalid HTTP method: {}", req.method))?;
 
     let mut builder = client.request(method, &url);
-    let timeout_ms = if default_timeout_ms < 1000 { 30_000 } else { default_timeout_ms };
+    let timeout_ms = if default_timeout_ms < 1000 {
+        30_000
+    } else {
+        default_timeout_ms
+    };
     builder = builder.timeout(Duration::from_millis(timeout_ms));
 
     let mut header_map = HeaderMap::new();
@@ -149,13 +158,12 @@ async fn do_send(
         AuthType::Basic if !req.basic_user.is_empty() => {
             let credentials = format!("{}:{}", req.basic_user, req.basic_pass);
             let encoded = general_purpose::STANDARD.encode(credentials.as_bytes());
-            let val = HeaderValue::from_str(&format!("Basic {encoded}"))
-                .map_err(|e| e.to_string())?;
+            let val =
+                HeaderValue::from_str(&format!("Basic {encoded}")).map_err(|e| e.to_string())?;
             header_map.insert(HeaderName::from_static("authorization"), val);
         }
         AuthType::ApiKey
-            if !req.api_key_name.is_empty()
-                && req.api_key_location == ApiKeyLocation::Header =>
+            if !req.api_key_name.is_empty() && req.api_key_location == ApiKeyLocation::Header =>
         {
             let name = HeaderName::from_str(&req.api_key_name)
                 .map_err(|_| format!("Invalid API key header name: {}", req.api_key_name))?;
@@ -163,14 +171,13 @@ async fn do_send(
             header_map.insert(name, val);
         }
         AuthType::Cookie if !req.cookie_string.is_empty() => {
-            let val =
-                HeaderValue::from_str(&req.cookie_string).map_err(|e| e.to_string())?;
+            let val = HeaderValue::from_str(&req.cookie_string).map_err(|e| e.to_string())?;
             header_map.insert(HeaderName::from_static("cookie"), val);
         }
         AuthType::JwtUser if !req.jwt_secret.is_empty() => {
             let token = make_jwt(&req.jwt_subject, &req.jwt_secret)?;
-            let val = HeaderValue::from_str(&format!("Bearer {token}"))
-                .map_err(|e| e.to_string())?;
+            let val =
+                HeaderValue::from_str(&format!("Bearer {token}")).map_err(|e| e.to_string())?;
             header_map.insert(HeaderName::from_static("authorization"), val);
         }
         _ => {}
@@ -270,7 +277,11 @@ async fn do_send(
     let response = builder.send().await.map_err(|e| describe_send_error(&e))?;
 
     let status = response.status().as_u16();
-    let status_text = response.status().canonical_reason().unwrap_or("").to_owned();
+    let status_text = response
+        .status()
+        .canonical_reason()
+        .unwrap_or("")
+        .to_owned();
 
     let mut headers = HashMap::new();
     for (name, value) in response.headers().iter() {
@@ -285,7 +296,10 @@ async fn do_send(
         }
     }
 
-    let raw_bytes = response.bytes().await.map_err(|e| format!("Read body: {e}"))?;
+    let raw_bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Read body: {e}"))?;
     let body_size = raw_bytes.len();
     let is_large = body_size > INLINE_BODY_THRESHOLD;
 
@@ -340,7 +354,11 @@ async fn do_send(
             // nor a reason for not having one.
             body_stored: is_large,
             is_binary: true,
-            binary_data: if is_large { None } else { Some(raw_bytes.to_vec()) },
+            binary_data: if is_large {
+                None
+            } else {
+                Some(raw_bytes.to_vec())
+            },
             duration_ms: 0, // filled by caller
             error: None,
         }),
@@ -451,8 +469,6 @@ fn default_client() -> Client {
         .expect("Failed to build HTTP client")
 }
 
-
-
 /// Categorise a send failure into a short, human label.
 fn classify_send_error(e: &reqwest::Error) -> &'static str {
     if e.is_timeout() {
@@ -494,7 +510,10 @@ mod url_tests {
         AppEnvironment {
             id: "test".to_owned(),
             name: "test".to_owned(),
-            variables: vars.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+            variables: vars
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
             is_active: true,
         }
     }
@@ -534,8 +553,14 @@ mod url_tests {
     /// the convenience the old code provided is preserved.
     #[test]
     fn raw_schemeless_urls_still_get_a_scheme() {
-        assert_eq!(resolve_url("api.example.com/x", None), "https://api.example.com/x");
-        assert_eq!(resolve_url("localhost:8899/x", None), "http://localhost:8899/x");
+        assert_eq!(
+            resolve_url("api.example.com/x", None),
+            "https://api.example.com/x"
+        );
+        assert_eq!(
+            resolve_url("localhost:8899/x", None),
+            "http://localhost:8899/x"
+        );
     }
 }
 
@@ -580,7 +605,11 @@ mod tls_option_tests {
     /// backstop for a restored session that somehow holds both.
     #[test]
     fn both_version_pins_is_treated_as_unrestricted() {
-        let both = TlsOptions { force_tls12: true, force_tls13: true, ..Default::default() };
+        let both = TlsOptions {
+            force_tls12: true,
+            force_tls13: true,
+            ..Default::default()
+        };
         // Must not fall back (which would mean the builder rejected it).
         let _client = build_client_with(both);
     }
@@ -651,10 +680,16 @@ mod error_tests {
             "error sending request",
             Some(Box::new(Err(
                 "client error (Connect)",
-                Some(Box::new(Err("invalid peer certificate: UnknownIssuer", None))),
+                Some(Box::new(Err(
+                    "invalid peer certificate: UnknownIssuer",
+                    None,
+                ))),
             ))),
         );
-        assert_eq!(root_cause(&chain), "invalid peer certificate: UnknownIssuer");
+        assert_eq!(
+            root_cause(&chain),
+            "invalid peer certificate: UnknownIssuer"
+        );
     }
 
     #[test]
@@ -708,18 +743,26 @@ mod live_tests {
 
         let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
         eprintln!("response: {:?}", result.response);
-        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(
+            result.response.error, None,
+            "request failed: {:?}",
+            result.response.error
+        );
         assert_eq!(result.response.status, 200);
 
-        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
-            .expect("server response should be JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result.response.body).expect("server response should be JSON");
         eprintln!("parsed server response: {parsed:#}");
 
         let files = parsed["files"].as_array().expect("files array");
         let fields = parsed["fields"].as_object().expect("fields object");
 
         assert_eq!(fields.get("name").and_then(|v| v.as_str()), Some("rustman"));
-        assert_eq!(files.len(), 1, "expected exactly one uploaded file, got: {files:?}");
+        assert_eq!(
+            files.len(),
+            1,
+            "expected exactly one uploaded file, got: {files:?}"
+        );
         assert_eq!(files[0]["filename"], "avatar.png");
         assert_eq!(files[0]["size"], 14); // "fake png bytes".len()
     }
@@ -746,11 +789,15 @@ mod live_tests {
         }];
 
         let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
-        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(
+            result.response.error, None,
+            "request failed: {:?}",
+            result.response.error
+        );
         assert_eq!(result.response.status, 200);
 
-        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
-            .expect("server response should be JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result.response.body).expect("server response should be JSON");
         eprintln!("parsed server response: {parsed:#}");
 
         let files = parsed["files"].as_array().expect("files array");
@@ -801,15 +848,19 @@ mod live_tests {
 
         let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
         eprintln!("response: {:?}", result.response);
-        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(
+            result.response.error, None,
+            "request failed: {:?}",
+            result.response.error
+        );
         assert_eq!(
             result.response.status, 200,
             "server rejected the request — body: {}",
             result.response.body
         );
 
-        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
-            .expect("server response should be JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result.response.body).expect("server response should be JSON");
         assert_eq!(parsed["received_fields"]["conta"], "sync_dep_1");
         assert_eq!(parsed["received_fields"]["modulo"], "SYNC");
     }

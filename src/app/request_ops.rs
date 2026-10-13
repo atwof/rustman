@@ -8,10 +8,13 @@ use crate::{
     state::tabs::RequestTabState,
 };
 
-use super::{scripting, AppState};
+use super::{AppState, scripting};
 
-
-pub(crate) fn format_body(tab: &mut RequestTabState, text: String, target: FormatTarget) -> Task<Message> {
+pub(crate) fn format_body(
+    tab: &mut RequestTabState,
+    text: String,
+    target: FormatTarget,
+) -> Task<Message> {
     let use_tabs = tab.body_indent_tabs;
     let tab_id = tab.id.clone();
     let (generation, cancel) = tab.jobs.start(JobKind::Format);
@@ -169,9 +172,15 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
 
 pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
     let tab = state.tabs.active_tab();
-    let req_id = tab.saved_as.as_ref().map(|(_, id)| id.clone())
+    let req_id = tab
+        .saved_as
+        .as_ref()
+        .map(|(_, id)| id.clone())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let collection_id = tab.saved_as.as_ref().map(|(col, _)| col.clone())
+    let collection_id = tab
+        .saved_as
+        .as_ref()
+        .map(|(col, _)| col.clone())
         .or_else(|| state.collections.first().map(|c| c.id.clone()))
         .unwrap_or_default();
 
@@ -281,7 +290,15 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
         .requests
         .values()
         .flatten()
-        .find(|r| Some(r.id.as_str()) == state.tabs.active_tab().saved_as.as_ref().map(|(_, id)| id.as_str()))
+        .find(|r| {
+            Some(r.id.as_str())
+                == state
+                    .tabs
+                    .active_tab()
+                    .saved_as
+                    .as_ref()
+                    .map(|(_, id)| id.as_str())
+        })
         .map(|r| (r.id.clone(), r.collection_id.clone(), r.group_id.clone()))
         .unwrap_or_default();
     state.sidebar.selected_request = Some(saved_id);
@@ -289,7 +306,9 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
         let mut current = gid;
         loop {
             state.sidebar.expanded.insert(current.clone());
-            let Some(g) = state.groups.iter().find(|g| g.id == current) else { break };
+            let Some(g) = state.groups.iter().find(|g| g.id == current) else {
+                break;
+            };
             if g.parent_is_collection {
                 state.sidebar.expanded.insert(g.parent_id.clone());
                 break;

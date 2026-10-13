@@ -1,8 +1,6 @@
-use iced::advanced::widget::{self, Widget, Tree};
-use iced::advanced::{layout, mouse, renderer, Clipboard, Layout, Shell};
-use iced::{
-    Color, Element, Event, Length, Rectangle, Size, Border,
-};
+use iced::advanced::widget::{self, Tree, Widget};
+use iced::advanced::{Clipboard, Layout, Shell, layout, mouse, renderer};
+use iced::{Element, Event, Length, Rectangle, Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
@@ -55,7 +53,12 @@ where
     }
 
     fn state(&self) -> widget::tree::State {
-        widget::tree::State::new(State { dragging: false, hovered: false, drag_origin: 0.0, drag_total: 0.0 })
+        widget::tree::State::new(State {
+            dragging: false,
+            hovered: false,
+            drag_origin: 0.0,
+            drag_total: 0.0,
+        })
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -86,37 +89,18 @@ where
 
     fn draw(
         &self,
-        tree: &Tree,
-        renderer: &mut Renderer,
+        _tree: &Tree,
+        _renderer: &mut Renderer,
         _theme: &Theme,
         _style: &renderer::Style,
-        layout: Layout<'_>,
+        _layout: Layout<'_>,
         _cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
-        let state = tree.state.downcast_ref::<State>();
-        let bounds = layout.bounds();
-        let color = if state.dragging || state.hovered {
-            Color::from_rgba(0.5, 0.5, 0.5, 0.6)
-        } else {
-            Color::from_rgba(0.3, 0.3, 0.3, 0.3)
-        };
-
-        let (bar_x, bar_y, bar_w, bar_h) = match self.orientation {
-            Orientation::Horizontal => (bounds.x, bounds.y + 3.0, bounds.width, 2.0),
-            Orientation::Vertical => (bounds.x + 3.0, bounds.y, 2.0, bounds.height),
-        };
-
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle { x: bar_x, y: bar_y, width: bar_w, height: bar_h },
-                border: Border { radius: 1.0.into(), width: 0.0, color: Color::TRANSPARENT },
-                ..Default::default()
-            },
-            color,
-        );
+        // No visible handle: panels carry their own borders, and a drawn
+        // bar always looked bolted-on across themes. The area stays
+        // draggable (mouse_interaction below) — just invisible.
     }
-
     fn mouse_interaction(
         &self,
         _tree: &Tree,
@@ -159,17 +143,15 @@ where
                     Orientation::Horizontal => {
                         let p = self.panel_split as f32 / 100.0;
                         let fixed_bot = 29.0;
-                        state.drag_origin = (bounds.y - p * (viewport.height - fixed_bot - 8.0))
-                            / (1.0 - p);
-                        state.drag_total = (viewport.height - state.drag_origin - fixed_bot - 8.0)
-                            .max(1.0);
+                        state.drag_origin =
+                            (bounds.y - p * (viewport.height - fixed_bot - 8.0)) / (1.0 - p);
+                        state.drag_total =
+                            (viewport.height - state.drag_origin - fixed_bot - 8.0).max(1.0);
                     }
                     Orientation::Vertical => {
                         let p = self.panel_split as f32 / 100.0;
-                        state.drag_origin = (bounds.x - p * (viewport.width - 8.0))
-                            / (1.0 - p);
-                        state.drag_total = (viewport.width - state.drag_origin - 8.0)
-                            .max(1.0);
+                        state.drag_origin = (bounds.x - p * (viewport.width - 8.0)) / (1.0 - p);
+                        state.drag_total = (viewport.width - state.drag_origin - 8.0).max(1.0);
                     }
                 }
                 shell.capture_event();
@@ -177,13 +159,13 @@ where
             Event::Mouse(mouse::Event::CursorMoved { position }) if state.dragging => {
                 let new_split = match self.orientation {
                     Orientation::Horizontal => {
-                        let ratio = ((position.y - state.drag_origin) / state.drag_total)
-                            .clamp(0.0, 1.0);
+                        let ratio =
+                            ((position.y - state.drag_origin) / state.drag_total).clamp(0.0, 1.0);
                         (ratio * 100.0).round().clamp(1.0, 99.0) as u16
                     }
                     Orientation::Vertical => {
-                        let ratio = ((position.x - state.drag_origin) / state.drag_total)
-                            .clamp(0.0, 1.0);
+                        let ratio =
+                            ((position.x - state.drag_origin) / state.drag_total).clamp(0.0, 1.0);
                         (ratio * 100.0).round().clamp(1.0, 99.0) as u16
                     }
                 };

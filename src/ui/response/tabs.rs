@@ -1,6 +1,6 @@
 use iced::{
-    widget::{container, row},
     Background, Border, Element, Length,
+    widget::{container, row},
 };
 
 use crate::{
@@ -25,7 +25,11 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                 let failed = tab.test_results.iter().any(|r| !r.passed);
                 (
                     Some(tab.test_results.len()),
-                    Some(if failed { Palette::ERROR } else { Palette::SUCCESS }),
+                    Some(if failed {
+                        Palette::ERROR
+                    } else {
+                        Palette::SUCCESS
+                    }),
                 )
             } else {
                 (None, None)
@@ -40,18 +44,17 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         })
         .collect();
 
-    container(
-        container(row(btns).spacing(2).padding(3))
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Palette::background())),
-                border: Border {
-                    color: Palette::border_subtle(),
-                    width: 1.0,
-                    radius: 9.0.into(),
-                },
-                ..Default::default()
-            }),
-    )
+    container(container(row(btns).spacing(2).padding(3)).style(|_| {
+        iced::widget::container::Style {
+            background: Some(Background::Color(Palette::background())),
+            border: Border {
+                color: Palette::border_subtle(),
+                width: 1.0,
+                radius: 9.0.into(),
+            },
+            ..Default::default()
+        }
+    }))
     .padding([8, 12])
     .width(Length::Fill)
     .into()

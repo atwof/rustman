@@ -1,5 +1,16 @@
 use serde::Serialize as _;
 
+/// Longest char-boundary prefix of `text` within `max_bytes`. Slicing a `str`
+/// mid-character panics — fatal under this crate's `panic = "abort"` — so
+/// every display cap in the app floors through this instead of hand-rolled
+/// byte loops.
+pub fn head_capped(text: &str, max_bytes: usize) -> &str {
+    let mut end = max_bytes.min(text.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
 
 pub fn pretty_json(text: &str, use_tabs: bool) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
@@ -344,7 +355,10 @@ mod html_tests {
             ("<a href=\"https://x.test/a\">t</a>", "t (https://x.test/a)"),
             ("<a href='https://x.test/b'>t</a>", "t (https://x.test/b)"),
             ("<a href=https://x.test/c>t</a>", "t (https://x.test/c)"),
-            ("<a href = \"https://x.test/d\">t</a>", "t (https://x.test/d)"),
+            (
+                "<a href = \"https://x.test/d\">t</a>",
+                "t (https://x.test/d)",
+            ),
             ("<a data-href=\"https://x.test/nope\">t</a>", "t"),
             ("<a>bare</a>", "bare"),
         ] {

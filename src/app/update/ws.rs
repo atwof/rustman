@@ -14,7 +14,10 @@ pub(super) fn handle(state: &mut AppState, msg: WsMsg) -> Task<Message> {
         }
         WsMsg::TextFrame(text) => {
             let tab = state.tabs.active_tab_mut();
-            tab.ws.messages.push(crate::state::tabs::WsMessage { text, is_outgoing: false });
+            tab.ws.messages.push(crate::state::tabs::WsMessage {
+                text,
+                is_outgoing: false,
+            });
         }
         WsMsg::Disconnected => {
             let tab = state.tabs.active_tab_mut();

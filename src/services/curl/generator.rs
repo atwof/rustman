@@ -34,7 +34,11 @@ pub struct GenerateCurlInput {
 pub fn generate(input: &GenerateCurlInput) -> String {
     let mut parts: Vec<String> = Vec::new();
 
-    let method = if input.method.trim().is_empty() { "GET" } else { input.method.trim() };
+    let method = if input.method.trim().is_empty() {
+        "GET"
+    } else {
+        input.method.trim()
+    };
 
     if method != "GET" {
         parts.push(format!("--request {}", method));
@@ -91,7 +95,11 @@ pub fn generate(input: &GenerateCurlInput) -> String {
         }
     }
 
-    let active_cookies: Vec<_> = input.cookies.iter().filter(|kv| !kv.key.is_empty()).collect();
+    let active_cookies: Vec<_> = input
+        .cookies
+        .iter()
+        .filter(|kv| !kv.key.is_empty())
+        .collect();
     if !active_cookies.is_empty() {
         let cookie_str = active_cookies
             .iter()
@@ -259,8 +267,14 @@ mod tests {
 
         let cmd = generate(&input);
 
-        assert!(cmd.contains("--data-urlencode conta=sync_dep_1"), "cmd was: {cmd}");
-        assert!(cmd.contains("--data-urlencode modulo=SYNC"), "cmd was: {cmd}");
+        assert!(
+            cmd.contains("--data-urlencode conta=sync_dep_1"),
+            "cmd was: {cmd}"
+        );
+        assert!(
+            cmd.contains("--data-urlencode modulo=SYNC"),
+            "cmd was: {cmd}"
+        );
         assert!(!cmd.contains("--form"));
         assert!(!cmd.contains("--data-raw"));
     }

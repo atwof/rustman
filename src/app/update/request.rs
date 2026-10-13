@@ -1,18 +1,30 @@
 use base64::Engine as _;
 use iced::Task;
+use std::sync::Arc;
 
+use crate::app::AppState;
 use crate::app::request_ops::{format_body, save_request, send_request};
 use crate::app::session::persist_session;
-use crate::app::AppState;
-use crate::domain::request::{sync_params_from_url, sync_url_from_params, BodyType};
+use crate::consts::{IMPORT_FILE_LIMIT, PASTE_GUARD_LEN, URL_GUARD_LEN};
+use crate::domain::request::{BodyType, sync_params_from_url, sync_url_from_params};
 use crate::jobs::JobKind;
 use crate::message::{AppMsg, FormatTarget, Message, RequestMsg};
 use crate::services::curl;
-use crate::state::tabs::{body_syntax, EditKind, RequestTabState};
+use crate::services::import::{PastedCommand, classify_pasted_command};
+use crate::state::tabs::{EditKind, RequestTabState, body_syntax, editor_message_edits_content};
+use crate::ui::request::cell::human_size;
 
 /// Tab drag-to-reorder is implemented but turned off for now — flip to
 /// `true` to re-enable.
 const TAB_DRAG_ENABLED: bool = false;
+
+/// Pasted commands above this size parse on the blocking pool instead of the
+/// UI thread, with a progress note meanwhile. Parsing itself is only
+/// ~200 ms for 5 MB — the minutes-long freeze on huge pastes is iced's
+/// single-line input shaping the paste (see `URL_GUARD_LEN`), which no app
+/// code can skip. Off-thread parsing keeps our own share from ever adding
+/// to it, and is what the clipboard/file import path always uses.
+const ASYNC_IMPORT_LEN: usize = 256 * 1024;
 
 pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
     let tab = state.tabs.active_tab_mut();
@@ -41,16 +53,73 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             // focusing the URL bar already defocuses the body/response editors.
             // Doing it per-keystroke here was a workaround for that missing
             // behaviour, and only ever covered this one field.
+            //
+            // The bar editor already holds this text on the live path (see
+            // `UrlEdited`): only the String and derived params update here,
+            // never a rebuild — rebuilding per keystroke would reset the
+            // cursor every time.
             tab.url = v;
             tab.params = sync_params_from_url(&tab.url, &tab.params);
             tab.modified = true;
         }
+        RequestMsg::UrlEdited(action) => {
+            use iced::widget::text_editor::{Action as UrlAction, Edit as UrlEdit};
+            match action {
+                // The bar is single-line by construction: Enter never lands
+                // (previously a no-op without `on_submit`, same as now).
+                UrlAction::Edit(UrlEdit::Enter) => return Task::none(),
+                // Huge pastes never enter the widget: recognized commands go
+                // straight to import — this is what keeps Ctrl+V instant no
+                // matter the size — and other megabytes are rejected with a
+                // status note instead of freezing the input.
+                UrlAction::Edit(UrlEdit::Paste(text)) if text.len() > URL_GUARD_LEN => {
+                    return match classify_pasted_command(&text) {
+                        PastedCommand::Curl => {
+                            handle(state, RequestMsg::ImportCurl(text.to_string()))
+                        }
+                        PastedCommand::Httpie => {
+                            handle(state, RequestMsg::ImportHttpie(text.to_string()))
+                        }
+                        PastedCommand::Other => {
+                            handle(state, RequestMsg::OversizedUrlRejected(text.len()))
+                        }
+                    };
+                }
+                UrlAction::Edit(UrlEdit::Paste(text)) => {
+                    // URLs are single-line: drop raw line breaks (a trailing
+                    // newline from terminal copies is the common case) rather
+                    // than growing the bar.
+                    let clean = text.replace("\r\n", "").replace(['\r', '\n'], "");
+                    tab.url_editor
+                        .perform(UrlAction::Edit(UrlEdit::Paste(Arc::new(clean))));
+                    let new_url = tab.url_editor.text();
+                    return handle(state, RequestMsg::UrlChanged(new_url));
+                }
+                action => {
+                    let edits = url_action_edits_content(&action);
+                    tab.url_editor.perform(action);
+                    // Navigation/selection/focus must not mark anything: only
+                    // content edits flow on to keep params, undo and dirty in
+                    // step — exactly what `on_input` used to drive.
+                    if edits {
+                        let new_url = tab.url_editor.text();
+                        return handle(state, RequestMsg::UrlChanged(new_url));
+                    }
+                    return Task::none();
+                }
+            }
+        }
         RequestMsg::MethodChanged(v) => {
-            if let Ok(m) = v.parse() { if tab.method != m { tab.method = m; tab.modified = true; } }
+            if let Ok(m) = v.parse() {
+                if tab.method != m {
+                    tab.method = m;
+                    tab.modified = true;
+                }
+            }
         }
         RequestMsg::TabSelected(t) => tab.active_request_tab = t,
         RequestMsg::BodyEdited(msg) => {
-            let content_changed = is_body_edit(&msg);
+            let content_changed = editor_message_edits_content(&msg);
             if content_changed {
                 tab.modified = true;
             }
@@ -81,7 +150,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             return task.map(|m| Message::Request(RequestMsg::BodyEdited(m)));
         }
         RequestMsg::GraphQLVariablesEdited(msg) => {
-            if is_body_edit(&msg) {
+            if editor_message_edits_content(&msg) {
                 tab.modified = true;
             }
             // Always JSON, never sniffed: this pane only ever holds variables.
@@ -92,20 +161,28 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 .map(|m| Message::Request(RequestMsg::GraphQLVariablesEdited(m)));
         }
         RequestMsg::PreRequestScriptEdited(msg) => {
-            if is_body_edit(&msg) {
+            if editor_message_edits_content(&msg) {
                 tab.modified = true;
             }
-            return tab.pre_request_editor.update(&msg)
+            return tab
+                .pre_request_editor
+                .update(&msg)
                 .map(|m| Message::Request(RequestMsg::PreRequestScriptEdited(m)));
         }
         RequestMsg::TestScriptEdited(msg) => {
-            if is_body_edit(&msg) {
+            if editor_message_edits_content(&msg) {
                 tab.modified = true;
             }
-            return tab.test_editor.update(&msg)
+            return tab
+                .test_editor
+                .update(&msg)
                 .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
         }
-        RequestMsg::NewTab => { state.tabs.new_tab(); persist_session(state); return Task::none(); }
+        RequestMsg::NewTab => {
+            state.tabs.new_tab();
+            persist_session(state);
+            return Task::none();
+        }
         RequestMsg::CloseTab(i) => {
             if state.tabs.tabs.get(i).map_or(false, |t| t.modified) {
                 state.close_confirm_tab = Some(i);
@@ -132,8 +209,15 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             }
             return Task::none();
         }
-        RequestMsg::CancelCloseTab => { state.close_confirm_tab = None; return Task::none(); }
-        RequestMsg::SwitchTab(i) => { state.tabs.switch_to(i); persist_session(state); return Task::none(); }
+        RequestMsg::CancelCloseTab => {
+            state.close_confirm_tab = None;
+            return Task::none();
+        }
+        RequestMsg::SwitchTab(i) => {
+            state.tabs.switch_to(i);
+            persist_session(state);
+            return Task::none();
+        }
         RequestMsg::TabDragStart(i) => {
             state.tabs.switch_to(i);
             if TAB_DRAG_ENABLED {
@@ -157,16 +241,56 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             return Task::none();
         }
         RequestMsg::Send => return send_request(state),
-        RequestMsg::HeaderAdded => { tab.headers.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
-        RequestMsg::HeaderRemoved(i) => { tab.headers.remove(i); tab.modified = true; }
-        RequestMsg::HeaderToggled(i) => { tab.headers[i].enabled = !tab.headers[i].enabled; tab.modified = true; }
-        RequestMsg::HeaderKeyChanged(i, v) => { tab.headers[i].key = v; tab.modified = true; }
-        RequestMsg::HeaderValueChanged(i, v) => { tab.headers[i].value = v; tab.modified = true; }
-        RequestMsg::ParamAdded => { tab.params.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
-        RequestMsg::ParamRemoved(i) => { tab.params.remove(i); tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
-        RequestMsg::ParamToggled(i) => { tab.params[i].enabled = !tab.params[i].enabled; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
-        RequestMsg::ParamKeyChanged(i, v) => { tab.params[i].key = v; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
-        RequestMsg::ParamValueChanged(i, v) => { tab.params[i].value = v; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
+        RequestMsg::HeaderAdded => {
+            tab.headers
+                .push(crate::domain::request::KeyValue::new_empty());
+            tab.modified = true;
+        }
+        RequestMsg::HeaderRemoved(i) => {
+            tab.headers.remove(i);
+            tab.modified = true;
+        }
+        RequestMsg::HeaderToggled(i) => {
+            tab.headers[i].enabled = !tab.headers[i].enabled;
+            tab.modified = true;
+        }
+        RequestMsg::HeaderKeyChanged(i, v) => {
+            tab.headers[i].key = v;
+            tab.modified = true;
+        }
+        RequestMsg::HeaderValueChanged(i, v) => {
+            tab.headers[i].value = v;
+            tab.modified = true;
+        }
+        RequestMsg::ParamAdded => {
+            tab.params
+                .push(crate::domain::request::KeyValue::new_empty());
+            tab.modified = true;
+        }
+        RequestMsg::ParamRemoved(i) => {
+            tab.params.remove(i);
+            let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
+            tab.modified = true;
+        }
+        RequestMsg::ParamToggled(i) => {
+            tab.params[i].enabled = !tab.params[i].enabled;
+            let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
+            tab.modified = true;
+        }
+        RequestMsg::ParamKeyChanged(i, v) => {
+            tab.params[i].key = v;
+            let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
+            tab.modified = true;
+        }
+        RequestMsg::ParamValueChanged(i, v) => {
+            tab.params[i].value = v;
+            let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
+            tab.modified = true;
+        }
         RequestMsg::HeadersBulkToggle => {
             if let Some(content) = tab.headers_bulk.take() {
                 tab.headers = parse_bulk_kv(&content.text(), false);
@@ -187,7 +311,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::ParamsBulkToggle => {
             if let Some(content) = tab.params_bulk.take() {
                 tab.params = parse_bulk_kv(&content.text(), true);
-                tab.url = sync_url_from_params(&tab.url, &tab.params);
+                let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
             } else {
                 let text = serialize_bulk_kv(&tab.params);
                 tab.params_bulk = Some(iced::widget::text_editor::Content::with_text(&text));
@@ -199,30 +324,64 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 content.perform(action);
                 let text = content.text();
                 tab.params = parse_bulk_kv(&text, true);
-                tab.url = sync_url_from_params(&tab.url, &tab.params);
+                let url = sync_url_from_params(&tab.url, &tab.params);
+            tab.set_url(url);
                 tab.modified = true;
             }
         }
-        RequestMsg::BearerTokenChanged(v) => { tab.bearer_token = v; tab.modified = true; }
-        RequestMsg::BasicUserChanged(v) => { tab.basic_user = v; tab.modified = true; }
-        RequestMsg::BasicPassChanged(v) => { tab.basic_pass = v; tab.modified = true; }
-        RequestMsg::ApiKeyNameChanged(v) => { tab.api_key_name = v; tab.modified = true; }
-        RequestMsg::ApiKeyValueChanged(v) => { tab.api_key_value = v; tab.modified = true; }
-        RequestMsg::AuthTypeChanged(v) => {
-            if let Ok(a) = v.parse() { if tab.auth_type != a { tab.auth_type = a; tab.modified = true; } }
+        RequestMsg::BearerTokenChanged(v) => {
+            tab.bearer_token = v;
+            tab.modified = true;
         }
-        RequestMsg::CookieStringChanged(v) => { tab.cookie_string = v; tab.modified = true; }
-        RequestMsg::JwtSecretChanged(v) => { tab.jwt_secret = v; tab.modified = true; }
-        RequestMsg::JwtSubjectChanged(v) => { tab.jwt_subject = v; tab.modified = true; }
-        RequestMsg::JwtAlgoChanged(v) => { tab.jwt_algo = v; tab.modified = true; }
+        RequestMsg::BasicUserChanged(v) => {
+            tab.basic_user = v;
+            tab.modified = true;
+        }
+        RequestMsg::BasicPassChanged(v) => {
+            tab.basic_pass = v;
+            tab.modified = true;
+        }
+        RequestMsg::ApiKeyNameChanged(v) => {
+            tab.api_key_name = v;
+            tab.modified = true;
+        }
+        RequestMsg::ApiKeyValueChanged(v) => {
+            tab.api_key_value = v;
+            tab.modified = true;
+        }
+        RequestMsg::AuthTypeChanged(v) => {
+            if let Ok(a) = v.parse() {
+                if tab.auth_type != a {
+                    tab.auth_type = a;
+                    tab.modified = true;
+                }
+            }
+        }
+        RequestMsg::CookieStringChanged(v) => {
+            tab.cookie_string = v;
+            tab.modified = true;
+        }
+        RequestMsg::JwtSecretChanged(v) => {
+            tab.jwt_secret = v;
+            tab.modified = true;
+        }
+        RequestMsg::JwtSubjectChanged(v) => {
+            tab.jwt_subject = v;
+            tab.modified = true;
+        }
+        RequestMsg::JwtAlgoChanged(v) => {
+            tab.jwt_algo = v;
+            tab.modified = true;
+        }
         RequestMsg::FormFieldTypeToggled(i) => {
             use crate::domain::request::FormFieldType;
             if i < tab.form_fields.len() {
-                tab.form_fields[i].field_type = if tab.form_fields[i].field_type == FormFieldType::Text {
-                    FormFieldType::File
-                } else {
-                    FormFieldType::Text
-                };
+                tab.form_fields[i].field_type =
+                    if tab.form_fields[i].field_type == FormFieldType::Text {
+                        FormFieldType::File
+                    } else {
+                        FormFieldType::Text
+                    };
                 tab.modified = true;
             }
         }
@@ -243,7 +402,9 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                     }
                 },
                 |res| match res {
-                    Some((idx, name, data)) => Message::Request(RequestMsg::FormFieldFilePicked(idx, name, data)),
+                    Some((idx, name, data)) => {
+                        Message::Request(RequestMsg::FormFieldFilePicked(idx, name, data))
+                    }
                     None => Message::App(AppMsg::Noop),
                 },
             );
@@ -271,23 +432,117 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::WsSend => {
             if let Some(tx) = tab.ws.outgoing_tx.clone() {
                 let msg = std::mem::take(&mut tab.ws.draft);
-                tab.ws.messages.push(crate::state::tabs::WsMessage { text: msg.clone(), is_outgoing: true });
+                tab.ws.messages.push(crate::state::tabs::WsMessage {
+                    text: msg.clone(),
+                    is_outgoing: true,
+                });
                 return Task::perform(
-                    async move { let _ = tx.send(msg).await; },
+                    async move {
+                        let _ = tx.send(msg).await;
+                    },
                     |_| Message::App(AppMsg::Noop),
                 );
             }
         }
         RequestMsg::ImportCurl(cmd) => {
-            apply_parsed_command(tab, curl::parse(&cmd));
+            if cmd.len() > ASYNC_IMPORT_LEN {
+                state.status_message = Some(format!("Parsing {} command…", human_size(cmd.len())));
+                state.importing = true;
+                return parse_command_off_thread(cmd, curl::parse);
+            }
+            apply_parsed_command(tab, curl::parse(&cmd), cmd.len());
         }
         RequestMsg::ImportHttpie(cmd) => {
-            apply_parsed_command(tab, crate::services::import::httpie::parse(&cmd));
+            if cmd.len() > ASYNC_IMPORT_LEN {
+                state.status_message = Some(format!("Parsing {} command…", human_size(cmd.len())));
+                state.importing = true;
+                return parse_command_off_thread(cmd, crate::services::import::httpie::parse);
+            }
+            apply_parsed_command(tab, crate::services::import::httpie::parse(&cmd), cmd.len());
+        }
+        RequestMsg::ImportCommandParsed { parsed, cmd_len } => {
+            state.importing = false;
+            state.status_message = Some("Command imported.".to_owned());
+            apply_parsed_command(tab, parsed, cmd_len);
+        }
+        RequestMsg::OversizedUrlRejected(len) => {
+            state.status_message = Some(format!(
+                "Dropped {} of text: not a curl/HTTPie command, and too large for the URL bar. Use Import for huge commands.",
+                human_size(len),
+            ));
+        }
+        RequestMsg::OpenImportDialog => {
+            state.import_dialog_open = true;
+        }
+        RequestMsg::CloseImportDialog => {
+            state.import_dialog_open = false;
+        }
+        RequestMsg::ImportFromClipboard => {
+            state.import_dialog_open = false;
+            state.importing = true;
+            state.status_message = Some("Reading clipboard…".to_owned());
+            return iced::clipboard::read()
+                .map(|text| Message::Request(RequestMsg::ImportClipboardText(text)));
+        }
+        RequestMsg::ImportClipboardText(text) => {
+            let Some(text) = text else {
+                state.importing = false;
+                state.status_message = Some("Clipboard is empty.".to_owned());
+                return Task::none();
+            };
+            return import_pasted_text(state, text);
+        }
+        RequestMsg::ImportFromFile => {
+            state.import_dialog_open = false;
+            state.importing = true;
+            state.status_message = Some("Choose a file holding the command…".to_owned());
+            return Task::perform(
+                async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .set_title("Import curl / HTTPie command")
+                        .pick_file()
+                        .await;
+                    match file {
+                        Some(f) => Some((f.file_name(), f.read().await)),
+                        None => None,
+                    }
+                },
+                |res| Message::Request(RequestMsg::ImportFileReady(res)),
+            );
+        }
+        RequestMsg::ImportFileReady(res) => {
+            let Some((name, bytes)) = res else {
+                state.importing = false;
+                state.status_message = None;
+                return Task::none();
+            };
+            if bytes.len() > IMPORT_FILE_LIMIT {
+                state.importing = false;
+                state.status_message = Some(format!(
+                    "{name} is {} — past the {} import limit.",
+                    human_size(bytes.len()),
+                    human_size(IMPORT_FILE_LIMIT),
+                ));
+                return Task::none();
+            }
+            match String::from_utf8(bytes) {
+                Ok(text) => return import_pasted_text(state, text),
+                Err(_) => {
+                    state.importing = false;
+                    state.status_message =
+                        Some(format!("{name} is not valid text — nothing imported."));
+                    return Task::none();
+                }
+            }
         }
         RequestMsg::SaveRequest => {
             let tab = state.tabs.active_tab();
             if tab.saved_as.is_none() {
-                let name = if tab.url.is_empty() { tab.title.clone() } else { tab.url.clone() };
+                let name = if tab.url.is_empty() {
+                    tab.title.clone()
+                } else {
+                    tab.url.clone()
+                };
                 state.save_dialog_name = name;
                 state.save_dialog_collection_id = state.collections.first().map(|c| c.id.clone());
                 state.save_dialog_group_id = None;
@@ -310,8 +565,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.body_editor.set_indent_style(style);
         }
         RequestMsg::ExportCurl => {
-            use crate::domain::request::{graphql_body, FormFieldType};
-            use crate::services::curl::{generate, FormFieldInput, GenerateCurlInput, KvPair};
+            use crate::domain::request::{FormFieldType, graphql_body};
+            use crate::services::curl::{FormFieldInput, GenerateCurlInput, KvPair, generate};
             let body_text = tab.body_editor.content();
             let is_graphql = tab.body_type == BodyType::GraphQL;
             let body = if is_graphql {
@@ -334,14 +589,21 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             } else {
                 Some(body_text)
             };
-            let mut headers: Vec<KvPair> = tab.headers.iter()
+            let mut headers: Vec<KvPair> = tab
+                .headers
+                .iter()
                 .filter(|h| h.enabled && !h.key.is_empty())
-                .map(|h| KvPair { key: h.key.clone(), value: h.value.clone() })
+                .map(|h| KvPair {
+                    key: h.key.clone(),
+                    value: h.value.clone(),
+                })
                 .collect();
             // The GraphQL body is JSON, and unlike the JSON body type nothing
             // else here says so — without this curl would send it as form data.
             if is_graphql
-                && !headers.iter().any(|h| h.key.eq_ignore_ascii_case("content-type"))
+                && !headers
+                    .iter()
+                    .any(|h| h.key.eq_ignore_ascii_case("content-type"))
             {
                 headers.push(KvPair {
                     key: "Content-Type".to_owned(),
@@ -349,7 +611,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 });
             }
             let form_fields: Vec<FormFieldInput> = if tab.body_type == BodyType::FormData {
-                tab.form_fields.iter()
+                tab.form_fields
+                    .iter()
                     .filter(|f| f.enabled && !f.key.is_empty())
                     .map(|f| FormFieldInput {
                         key: f.key.clone(),
@@ -373,11 +636,31 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 form_fields,
                 cookies: vec![],
                 auth_type: tab.auth_type.as_str().to_owned(),
-                bearer_token: if tab.bearer_token.is_empty() { None } else { Some(tab.bearer_token.clone()) },
-                basic_user: if tab.basic_user.is_empty() { None } else { Some(tab.basic_user.clone()) },
-                basic_pass: if tab.basic_pass.is_empty() { None } else { Some(tab.basic_pass.clone()) },
-                api_key_name: if tab.api_key_name.is_empty() { None } else { Some(tab.api_key_name.clone()) },
-                api_key_value: if tab.api_key_value.is_empty() { None } else { Some(tab.api_key_value.clone()) },
+                bearer_token: if tab.bearer_token.is_empty() {
+                    None
+                } else {
+                    Some(tab.bearer_token.clone())
+                },
+                basic_user: if tab.basic_user.is_empty() {
+                    None
+                } else {
+                    Some(tab.basic_user.clone())
+                },
+                basic_pass: if tab.basic_pass.is_empty() {
+                    None
+                } else {
+                    Some(tab.basic_pass.clone())
+                },
+                api_key_name: if tab.api_key_name.is_empty() {
+                    None
+                } else {
+                    Some(tab.api_key_name.clone())
+                },
+                api_key_value: if tab.api_key_value.is_empty() {
+                    None
+                } else {
+                    Some(tab.api_key_value.clone())
+                },
                 api_key_location: api_loc,
             };
             let curl_cmd = generate(&input);
@@ -426,6 +709,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::FormFieldRemoved(i) => {
             if i < tab.form_fields.len() {
+                let id = tab.form_fields[i].id.clone();
+                tab.drop_form_expand(&id);
                 tab.form_fields.remove(i);
                 tab.modified = true;
             }
@@ -441,6 +726,30 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 f.value = v;
                 tab.modified = true;
             }
+        }
+        RequestMsg::FormValueExpandToggled(i) => {
+            tab.toggle_form_expand(i);
+        }
+        RequestMsg::FormValuePagePrev(i) => {
+            tab.turn_form_page(i, false);
+        }
+        RequestMsg::FormValuePageNext(i) => {
+            tab.turn_form_page(i, true);
+        }
+        RequestMsg::FormValueEdited(i, message) => {
+            let (task, _changed) = tab.update_form_viewer(i, &message);
+            return task.map(move |editor_message| {
+                Message::Request(RequestMsg::FormValueEdited(i, editor_message))
+            });
+        }
+        RequestMsg::FormValueCopy(i) => {
+            let body = tab
+                .form_fields
+                .get(i)
+                .map(|f| f.value.clone())
+                .unwrap_or_default();
+            state.status_message = Some("Copied!".to_owned());
+            return iced::clipboard::write::<Message>(body);
         }
         RequestMsg::ApiKeyLocationChanged(v) => {
             if let Ok(loc) = v.parse() {
@@ -461,20 +770,29 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                     if tab.test_editor.has_keyboard_focus() {
                         let toggled = toggle_js_comments(&tab.test_editor.content());
                         tab.modified = true;
-                        let _ = tab.test_editor.update(&iced_code_editor::Message::SelectAll);
-                        return tab.test_editor.update(&iced_code_editor::Message::Paste(toggled))
+                        let _ = tab
+                            .test_editor
+                            .update(&iced_code_editor::Message::SelectAll);
+                        return tab
+                            .test_editor
+                            .update(&iced_code_editor::Message::Paste(toggled))
                             .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
                     }
                     let toggled = toggle_js_comments(&tab.pre_request_editor.content());
                     tab.modified = true;
-                    let _ = tab.pre_request_editor.update(&iced_code_editor::Message::SelectAll);
-                    return tab.pre_request_editor.update(&iced_code_editor::Message::Paste(toggled))
+                    let _ = tab
+                        .pre_request_editor
+                        .update(&iced_code_editor::Message::SelectAll);
+                    return tab
+                        .pre_request_editor
+                        .update(&iced_code_editor::Message::Paste(toggled))
                         .map(|m| Message::Request(RequestMsg::PreRequestScriptEdited(m)));
                 }
                 RequestTab::Body => {
                     let toggled = toggle_js_comments(&tab.body_editor.content());
                     tab.modified = true;
-                    return tab.replace_body_text(toggled)
+                    return tab
+                        .replace_body_text(toggled)
                         .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
                 }
                 _ => {}
@@ -495,6 +813,24 @@ enum EditClass {
     Coalesce(EditKind),
     /// A structural edit (add/remove/toggle/import); always its own entry.
     Discrete,
+}
+
+/// Whether a URL-bar editor action mutates the text (for undo coalescing
+/// and the `UrlChanged` follow-up). Navigation, selection and focus never
+/// count — cursor moves must not mark the tab modified.
+fn url_action_edits_content(action: &iced::widget::text_editor::Action) -> bool {
+    use iced::widget::text_editor::{Action as UrlAction, Edit as UrlEdit};
+    matches!(
+        action,
+        UrlAction::Edit(
+            UrlEdit::Insert(_)
+                | UrlEdit::Paste(_)
+                | UrlEdit::Indent
+                | UrlEdit::Unindent
+                | UrlEdit::Backspace
+                | UrlEdit::Delete
+        )
+    )
 }
 
 /// Record an undo checkpoint of the request fields *before* a mutating message is
@@ -520,6 +856,7 @@ fn edit_class(msg: &RequestMsg) -> EditClass {
     use RequestMsg as M;
     match msg {
         M::UrlChanged(_) => EditClass::Coalesce(K::Url),
+        M::UrlEdited(action) if url_action_edits_content(action) => EditClass::Coalesce(K::Url),
         M::HeaderKeyChanged(i, _) => EditClass::Coalesce(K::HeaderKey(*i)),
         M::HeaderValueChanged(i, _) => EditClass::Coalesce(K::HeaderValue(*i)),
         M::ParamKeyChanged(i, _) => EditClass::Coalesce(K::ParamKey(*i)),
@@ -535,11 +872,19 @@ fn edit_class(msg: &RequestMsg) -> EditClass {
         M::JwtSecretChanged(_) => EditClass::Coalesce(K::JwtSecret),
         M::JwtSubjectChanged(_) => EditClass::Coalesce(K::JwtSubject),
         M::JwtAlgoChanged(_) => EditClass::Coalesce(K::JwtAlgo),
-        M::HeaderAdded | M::HeaderRemoved(_) | M::HeaderToggled(_)
-        | M::ParamAdded | M::ParamRemoved(_) | M::ParamToggled(_)
-        | M::HeadersBulkToggle | M::ParamsBulkToggle
-        | M::MethodChanged(_) | M::AuthTypeChanged(_) | M::ApiKeyLocationChanged(_)
-        | M::ImportCurl(_) => EditClass::Discrete,
+        M::HeaderAdded
+        | M::HeaderRemoved(_)
+        | M::HeaderToggled(_)
+        | M::ParamAdded
+        | M::ParamRemoved(_)
+        | M::ParamToggled(_)
+        | M::HeadersBulkToggle
+        | M::ParamsBulkToggle
+        | M::MethodChanged(_)
+        | M::AuthTypeChanged(_)
+        | M::ApiKeyLocationChanged(_)
+        | M::ImportCurl(_)
+        | M::ImportCommandParsed { .. } => EditClass::Discrete,
         _ => EditClass::Skip,
     }
 }
@@ -548,21 +893,29 @@ fn edit_class(msg: &RequestMsg) -> EditClass {
 /// start with `//` they are removed; otherwise `// ` is prepended to each.
 fn toggle_js_comments(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
-    let all_commented = lines.iter()
+    let all_commented = lines
+        .iter()
         .filter(|l| !l.trim().is_empty())
         .all(|l| l.trim_start().starts_with("//"));
-    lines.iter().map(|l| {
-        if l.trim().is_empty() {
-            l.to_string()
-        } else if all_commented {
-            let trimmed = l.trim_start();
-            let without = trimmed.strip_prefix("// ").or_else(|| trimmed.strip_prefix("//")).unwrap_or(trimmed);
-            let leading = &l[..l.len() - trimmed.len()];
-            format!("{leading}{without}")
-        } else {
-            format!("// {l}")
-        }
-    }).collect::<Vec<_>>().join("\n")
+    lines
+        .iter()
+        .map(|l| {
+            if l.trim().is_empty() {
+                l.to_string()
+            } else if all_commented {
+                let trimmed = l.trim_start();
+                let without = trimmed
+                    .strip_prefix("// ")
+                    .or_else(|| trimmed.strip_prefix("//"))
+                    .unwrap_or(trimmed);
+                let leading = &l[..l.len() - trimmed.len()];
+                format!("{leading}{without}")
+            } else {
+                format!("// {l}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Parse a bulk-edit text block into key/value rows. One entry per line,
@@ -612,32 +965,141 @@ fn serialize_bulk_kv(items: &[crate::domain::request::KeyValue]) -> String {
         .join("\n")
 }
 
-/// Returns `true` when the CodeEditor message changes buffer content (insert,
-/// delete, paste, undo/redo, etc.).  Navigation, scrolling, focus, and search
-/// messages do NOT count — they shouldn't mark the request as modified.
-fn is_body_edit(msg: &iced_code_editor::Message) -> bool {
-    use iced_code_editor::Message as M;
-    matches!(
-        msg,
-        M::CharacterInput(_)
-            | M::Backspace
-            | M::Delete
-            | M::Enter
-            | M::Tab
-            | M::Paste(_)
-            | M::Cut
-            | M::DeleteSelection
-            | M::Undo
-            | M::Redo
-            | M::MoveLineUp
-            | M::MoveLineDown
-            | M::ToggleComment
-            | M::DuplicateLineDown
-            | M::DuplicateLineUp
-            | M::ReplaceNext
-            | M::ReplaceAll
-            | M::ImeCommit(_)
-    )
+#[cfg(test)]
+mod import_guard_tests {
+    use super::*;
+
+    /// A big markdown doc as a form value, like the reported breakage:
+    /// brackets, newlines, tabs, well past any sane input size.
+    fn big_markdown() -> String {
+        let para = "# Title\n\nSome **bold** text\twith tabs and [links](https://x.test/y).\n\n- item 1\n- item 2\n";
+        para.repeat(20_000) // ~2 MB
+    }
+
+    #[test]
+    fn huge_form_value_survives_import_intact() {
+        let doc = big_markdown();
+        let cmd = format!("curl -X POST https://api.example.com/upload -F \"doc={doc}\"");
+        let parsed = curl::parse(&cmd);
+        assert_eq!(parsed.form.len(), 1);
+
+        let mut tab = RequestTabState::new();
+        apply_parsed_command(&mut tab, parsed, cmd.len());
+
+        assert_eq!(tab.url, "https://api.example.com/upload");
+        assert_eq!(tab.form_fields.len(), 1);
+        // State keeps every byte for send/save; only the *widget* is capped.
+        assert_eq!(tab.form_fields[0].value.len(), doc.len());
+        assert_eq!(tab.form_fields[0].value, doc);
+    }
+
+    #[test]
+    fn huge_blob_without_url_is_dropped_from_url_bar() {
+        // No URL anywhere: without the guard the multi-MB command would sit
+        // in the single-line URL input and freeze layout every frame. The
+        // parsed content still applies — only the bar is cleared.
+        let cmd = format!(
+            "curl -F \"doc={}\" --header \"X-Nothing: 1\"",
+            big_markdown()
+        );
+        assert!(curl::parse(&cmd).url.is_none());
+
+        let mut tab = RequestTabState::new();
+        tab.url = cmd.clone();
+        apply_parsed_command(&mut tab, curl::parse(&cmd), cmd.len());
+
+        assert!(
+            tab.url.is_empty(),
+            "unparseable blob must not linger in the URL bar"
+        );
+        assert_eq!(tab.form_fields.len(), 1, "parsed fields still apply");
+        assert!(tab.form_fields[0].value.len() > 1_000_000);
+    }
+
+    #[test]
+    fn curl_prefix_match_is_case_insensitive() {
+        let parsed = curl::parse("  CURL https://api.example.com/u -F \"a=b\"");
+        assert_eq!(parsed.url.as_deref(), Some("https://api.example.com/u"));
+        assert_eq!(parsed.form.len(), 1);
+    }
+
+    #[test]
+    fn short_commands_behave_exactly_as_before() {
+        // A normal typed command still imports, including mid-typing states
+        // with no URL yet (guard only fires past 4 KB).
+        let mut tab = RequestTabState::new();
+        let cmd = "curl -X POST https://api.example.com/u -F \"a=b\"";
+        apply_parsed_command(&mut tab, curl::parse(cmd), cmd.len());
+        assert_eq!(tab.url, "https://api.example.com/u");
+        assert_eq!(tab.form_fields.len(), 1);
+        assert_eq!(tab.form_fields[0].value, "b");
+
+        let mut typing = RequestTabState::new();
+        typing.url = "curl -X POST".to_owned();
+        apply_parsed_command(
+            &mut typing,
+            curl::parse("curl -X POST"),
+            "curl -X POST".len(),
+        );
+        assert_eq!(
+            typing.url, "curl -X POST",
+            "mid-typing text must be left alone"
+        );
+    }
+
+    #[test]
+    fn multiline_values_are_kept_verbatim_in_state() {
+        let mut tab = RequestTabState::new();
+        let cmd = "curl https://x.test -F \"doc=a\nb\r\nc\"";
+        apply_parsed_command(&mut tab, curl::parse(cmd), cmd.len());
+        assert_eq!(tab.form_fields[0].value.replace("\r\n", "\n"), "a\nb\nc");
+    }
+
+    #[test]
+    fn multiple_fields_survive_a_huge_middle_value() {
+        // The reported shape: several -F fields, one of them enormous, with
+        // apostrophes, expansions and escapes in the mix.
+        let big = format!(
+            "don't stop $(believin') ${{x}} `code` C:\\path\\ [a](b) {}",
+            "z".repeat(500_000)
+        );
+        let cmd = format!(
+            "curl https://api.example.com/multi -F \"first=1\" -F \"doc={big}\" -F \"third=3\""
+        );
+        let parsed = curl::parse(&cmd);
+        let keys: Vec<&str> = parsed.form.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec!["first", "doc", "third"],
+            "all fields must survive"
+        );
+        assert_eq!(parsed.form[1].value, big);
+        assert_eq!(parsed.form[2].value, "3");
+    }
+
+    #[test]
+    fn nasty_mixed_content_round_trips_byte_identical() {
+        // Prompt-template-shaped: markdown, brackets, tabs, CRLF, unicode,
+        // emoji and multi-KB single-line runs — the exact shape that broke
+        // single-line inputs.
+        //
+        // `raw` is the value curl must deliver; the shell text carries it
+        // backslash-escaped (as devtools "copy as cURL" emits — bare quotes
+        // would end quoting even in bash, so expecting them verbatim would
+        // be testing invalid shell).
+        let raw = "# Tïtle 🎉\n\nSystem: [ASSISTANT] {tools: [x]}.\n\n```json\n{\"k\": [1,\t2]}\r\n```\n\ncafé naïve 日本語 [l](https://x.test/?a[b]=c) &amp;\n\n";
+        let shell_doc = raw.replace('"', "\\\"");
+        let doc = shell_doc.repeat(2_000); // ~200 KB
+        let cmd = format!("curl -X POST https://api.example.com/t -F \"prompt={doc}\"");
+        let mut tab = RequestTabState::new();
+        apply_parsed_command(&mut tab, curl::parse(&cmd), cmd.len());
+
+        assert_eq!(tab.url, "https://api.example.com/t");
+        assert_eq!(tab.form_fields.len(), 1);
+        assert_eq!(tab.form_fields[0].value, raw.repeat(2_000));
+        // And the preview classification agrees it must not go in an input.
+        assert!(!crate::ui::request::cell::is_inline(&doc));
+    }
 }
 
 #[cfg(test)]
@@ -647,7 +1109,10 @@ mod undo_tests {
     #[test]
     fn mime_guessed_from_extension() {
         assert_eq!(guess_mime("photo.PNG").as_deref(), Some("image/png"));
-        assert_eq!(guess_mime("archive.tar.gz").as_deref(), Some("application/gzip"));
+        assert_eq!(
+            guess_mime("archive.tar.gz").as_deref(),
+            Some("application/gzip")
+        );
         assert_eq!(guess_mime("noext").as_deref(), None); // falls back to octet-stream
         assert_eq!(guess_mime("weird.xyz").as_deref(), None);
     }
@@ -658,17 +1123,26 @@ mod undo_tests {
             guess_mime("report.xlsx").as_deref(),
             Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         );
-        assert_eq!(guess_mime("legacy.xls").as_deref(), Some("application/vnd.ms-excel"));
+        assert_eq!(
+            guess_mime("legacy.xls").as_deref(),
+            Some("application/vnd.ms-excel")
+        );
         assert_eq!(
             guess_mime("doc.docx").as_deref(),
             Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
         );
-        assert_eq!(guess_mime("legacy.doc").as_deref(), Some("application/msword"));
+        assert_eq!(
+            guess_mime("legacy.doc").as_deref(),
+            Some("application/msword")
+        );
         assert_eq!(
             guess_mime("slides.pptx").as_deref(),
             Some("application/vnd.openxmlformats-officedocument.presentationml.presentation")
         );
-        assert_eq!(guess_mime("legacy.ppt").as_deref(), Some("application/vnd.ms-powerpoint"));
+        assert_eq!(
+            guess_mime("legacy.ppt").as_deref(),
+            Some("application/vnd.ms-powerpoint")
+        );
     }
 
     #[test]
@@ -696,7 +1170,10 @@ mod undo_tests {
         let mut tab = RequestTabState::new();
         record_undo(&mut tab, &RequestMsg::Send);
         record_undo(&mut tab, &RequestMsg::Undo);
-        record_undo(&mut tab, &RequestMsg::TabSelected(crate::message::RequestTab::Headers));
+        record_undo(
+            &mut tab,
+            &RequestMsg::TabSelected(crate::message::RequestTab::Headers),
+        );
         assert!(tab.undo.is_empty());
     }
 
@@ -715,12 +1192,63 @@ mod undo_tests {
     }
 }
 
-fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl::ParsedCurl) {
+/// Parse a command on the blocking pool, then apply it via
+/// `ImportCommandParsed`. Used for large URL-bar pastes and always for the
+/// clipboard/file import path, whose bytes never enter a text widget.
+fn parse_command_off_thread(cmd: String, parse: fn(&str) -> curl::ParsedCurl) -> Task<Message> {
+    Task::perform(
+        async move {
+            let cmd_len = cmd.len();
+            match tokio::task::spawn_blocking(move || parse(&cmd)).await {
+                Ok(parsed) => Message::Request(RequestMsg::ImportCommandParsed { parsed, cmd_len }),
+                Err(_) => Message::App(AppMsg::Noop),
+            }
+        },
+        std::convert::identity,
+    )
+}
+
+/// Apply command text obtained without a text widget (clipboard/file import).
+/// Unrecognized text is reported, never stored: only commands produce tabs.
+fn import_pasted_text(state: &mut AppState, text: String) -> Task<Message> {
+    match classify_pasted_command(&text) {
+        PastedCommand::Curl => {
+            state.status_message = Some(format!("Parsing {} command…", human_size(text.len())));
+            parse_command_off_thread(text, curl::parse)
+        }
+        PastedCommand::Httpie => {
+            state.status_message = Some(format!("Parsing {} command…", human_size(text.len())));
+            parse_command_off_thread(text, crate::services::import::httpie::parse)
+        }
+        PastedCommand::Other => {
+            state.importing = false;
+            state.status_message =
+                Some("That isn't a curl or HTTPie command — nothing imported.".to_owned());
+            Task::none()
+        }
+    }
+}
+
+fn apply_parsed_command(
+    tab: &mut RequestTabState,
+    parsed: crate::services::curl::ParsedCurl,
+    cmd_len: usize,
+) {
+    // A paste that parses to no URL must not linger in the URL bar: a
+    // multi-MB command would sit in the single-line URL input and freeze
+    // layout every frame. The parsed content still applies below — only the
+    // bar is cleared. Short commands are untouched, so mid-typing states
+    // (no URL yet, still being typed) keep working as before.
+    if parsed.url.is_none() && cmd_len > PASTE_GUARD_LEN {
+        tab.set_url(String::new());
+        tab.modified = true;
+    }
+
     let has_body = parsed.body.is_some();
     let has_headers = !parsed.header.is_empty();
 
     if let Some(url) = parsed.url {
-        tab.url = url;
+        tab.set_url(url);
         tab.params = sync_params_from_url(&tab.url, &[]);
     }
     if let Some(method) = parsed.method {
@@ -751,7 +1279,9 @@ fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl
         false
     };
 
-    let headers_without_auth: Vec<_> = parsed.header.into_iter()
+    let headers_without_auth: Vec<_> = parsed
+        .header
+        .into_iter()
         .filter(|(k, _)| !auth_detected || k != "Authorization")
         .map(|(k, v)| crate::domain::request::KeyValue {
             id: uuid::Uuid::new_v4().to_string(),
@@ -772,10 +1302,8 @@ fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl
             } else {
                 crate::domain::request::BodyType::Text
             };
-            tab.body_editor = crate::state::tabs::make_code_editor(
-                &body,
-                if is_json { "json" } else { "txt" },
-            );
+            tab.body_editor =
+                crate::state::tabs::make_code_editor(&body, if is_json { "json" } else { "txt" });
         }
         tab.active_request_tab = crate::message::RequestTab::Body;
     } else if auth_detected {
@@ -786,7 +1314,9 @@ fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl
         tab.active_request_tab = crate::message::RequestTab::Headers;
     }
     if !parsed.cookies.is_empty() {
-        tab.cookie_string = parsed.cookies.into_iter()
+        tab.cookie_string = parsed
+            .cookies
+            .into_iter()
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("; ");
@@ -797,23 +1327,29 @@ fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl
     if !parsed.form.is_empty() {
         use crate::domain::request::{FormField, FormFieldType};
         tab.body_type = crate::domain::request::BodyType::FormData;
-        tab.form_fields = parsed.form.into_iter().map(|f| {
-            let (field_type, value, file_name) = if f.is_file {
-                (FormFieldType::File, String::new(), Some(f.value))
-            } else {
-                (FormFieldType::Text, f.value, None)
-            };
-            FormField {
-                id: uuid::Uuid::new_v4().to_string(),
-                key: f.key,
-                value,
-                field_type,
-                enabled: true,
-                file_name,
-                file_data: None,
-                mime_type: None,
-            }
-        }).collect();
+        // Fresh rows, fresh ids: any expanded viewers point at dead rows.
+        tab.form_viewers.clear();
+        tab.form_fields = parsed
+            .form
+            .into_iter()
+            .map(|f| {
+                let (field_type, value, file_name) = if f.is_file {
+                    (FormFieldType::File, String::new(), Some(f.value))
+                } else {
+                    (FormFieldType::Text, f.value, None)
+                };
+                FormField {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    key: f.key,
+                    value,
+                    field_type,
+                    enabled: true,
+                    file_name,
+                    file_data: None,
+                    mime_type: None,
+                }
+            })
+            .collect();
         tab.active_request_tab = crate::message::RequestTab::Body;
     }
     tab.modified = true;

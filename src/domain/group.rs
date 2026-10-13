@@ -19,7 +19,12 @@ pub struct Group {
 }
 
 impl Group {
-    pub fn new(parent_id: String, parent_is_collection: bool, name: String, sort_order: i64) -> Self {
+    pub fn new(
+        parent_id: String,
+        parent_is_collection: bool,
+        name: String,
+        sort_order: i64,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             parent_id,
@@ -70,7 +75,10 @@ impl ImportedCollection {
 
     /// Every request in this collection, depth-first.
     pub fn all_requests(&self) -> Vec<&crate::domain::collection::SavedRequest> {
-        fn walk<'a>(g: &'a ImportedGroup, out: &mut Vec<&'a crate::domain::collection::SavedRequest>) {
+        fn walk<'a>(
+            g: &'a ImportedGroup,
+            out: &mut Vec<&'a crate::domain::collection::SavedRequest>,
+        ) {
             out.extend(g.requests.iter());
             for child in &g.groups {
                 walk(child, out);

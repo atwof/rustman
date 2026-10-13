@@ -1,24 +1,35 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_input, Space},
     Alignment, Background, Border, Color, Element, Length,
+    widget::{Space, button, column, container, row, scrollable, text, text_input},
 };
 
 use crate::{
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{icons, theme::{Palette, MONO, TEXT_SM, TEXT_XS}},
+    ui::{
+        icons,
+        theme::{MONO, Palette, TEXT_SM, TEXT_XS},
+    },
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let ws = &tab.ws;
 
-    let status_color = if ws.connected { Palette::SUCCESS } else { Palette::text_muted() };
+    let status_color = if ws.connected {
+        Palette::SUCCESS
+    } else {
+        Palette::text_muted()
+    };
     let status_bar = container(
         row![
             icons::dot(status_color),
-            text(if ws.connected { "Connected" } else { "Disconnected" })
-                .size(TEXT_XS)
-                .color(status_color),
+            text(if ws.connected {
+                "Connected"
+            } else {
+                "Disconnected"
+            })
+            .size(TEXT_XS)
+            .color(status_color),
             Space::new().width(Length::Fill),
         ]
         .spacing(6)
@@ -73,10 +84,16 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
 
     column![
         status_bar,
-        scrollable(feed).height(Length::Fill).style(crate::ui::theme::thin_scrollbar),
+        scrollable(feed)
+            .height(Length::Fill)
+            .style(crate::ui::theme::thin_scrollbar),
         container(send_row).style(|_| container::Style {
             background: Some(Background::Color(Palette::background())),
-            border: Border { color: Palette::border_subtle(), width: 1.0, radius: 0.0.into() },
+            border: Border {
+                color: Palette::border_subtle(),
+                width: 1.0,
+                radius: 0.0.into()
+            },
             ..Default::default()
         }),
     ]
@@ -87,22 +104,42 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
 /// Chat-style bubble: outgoing on the right in accent, incoming on the left.
 fn message_bubble(text_str: &str, outgoing: bool) -> Element<'static, Message> {
     let (bg, border_color, label, label_color) = if outgoing {
-        (Palette::accent_soft(), Color { a: 0.3, ..Palette::accent() }, "→ sent", Palette::accent())
+        (
+            Palette::accent_soft(),
+            Color {
+                a: 0.3,
+                ..Palette::accent()
+            },
+            "→ sent",
+            Palette::accent(),
+        )
     } else {
-        (Palette::surface_high(), Palette::border_subtle(), "← recv", Palette::SUCCESS)
+        (
+            Palette::surface_high(),
+            Palette::border_subtle(),
+            "← recv",
+            Palette::SUCCESS,
+        )
     };
 
     let bubble = container(
         column![
             text(label).size(9).color(label_color),
-            text(text_str.to_owned()).size(12).color(Palette::text()).font(MONO),
+            text(text_str.to_owned())
+                .size(12)
+                .color(Palette::text())
+                .font(MONO),
         ]
         .spacing(2),
     )
     .padding([6, 10])
     .style(move |_| container::Style {
         background: Some(Background::Color(bg)),
-        border: Border { color: border_color, width: 1.0, radius: 8.0.into() },
+        border: Border {
+            color: border_color,
+            width: 1.0,
+            radius: 8.0.into(),
+        },
         ..Default::default()
     })
     .max_width(560);
@@ -123,7 +160,10 @@ fn send_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget
             _ => accent,
         })),
         text_color: Color::WHITE,
-        border: Border { radius: 8.0.into(), ..Default::default() },
+        border: Border {
+            radius: 8.0.into(),
+            ..Default::default()
+        },
         shadow: iced::Shadow {
             color: Color { a: 0.3, ..accent },
             offset: iced::Vector::new(0.0, 2.0),

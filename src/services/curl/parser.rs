@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use serde::Serialize;
 
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct ParsedCurl {
     pub method: Option<String>,
     pub url: Option<String>,
@@ -15,7 +15,7 @@ pub struct ParsedCurl {
     pub form: Vec<CurlForm>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CurlForm {
     pub key: String,
     pub value: String,
@@ -30,14 +30,68 @@ pub fn parse(input: &str) -> ParsedCurl {
     parse_tokens(tokens)
 }
 
+/// Normalize line endings/continuations in the pasted command — but only
+/// outside quotes. `\r` inside a quoted value is literal data (bash preserves
+/// it; curl sends it), and the old blanket strip corrupted CRLF payloads.
+/// Outside quotes the behavior is unchanged: `\` + newline folds to a space,
+/// lone `\r` is dropped.
 fn normalize_line_continuations(s: &str) -> String {
-    s.replace("\\\r\n", " ").replace("\\\n", " ").replace('\r', "")
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    let mut quote = None;
+    while let Some(c) = chars.next() {
+        if let Some(q) = quote {
+            // Verbatim, escape pairs included — the tokenizer interprets them.
+            out.push(c);
+            if c == '\\' && q == '"' {
+                if let Some(e) = chars.next() {
+                    out.push(e);
+                }
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' => {
+                quote = Some(c);
+                out.push(c);
+            }
+            '\\' => match chars.peek() {
+                Some('\n') => {
+                    chars.next();
+                    out.push(' ');
+                }
+                Some('\r') => {
+                    chars.next();
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    out.push(' ');
+                }
+                _ => out.push('\\'),
+            },
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                    out.push('\n');
+                }
+                // lone \r outside quotes: dropped (prior behavior)
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 fn strip_curl_prefix(s: &str) -> &str {
     let trimmed = s.trim_start();
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("curl") {
+    // Compare only the command word: lowercasing the whole paste to find a
+    // four-letter prefix would copy megabytes on every large import.
+    if trimmed
+        .get(..4)
+        .is_some_and(|head| head.eq_ignore_ascii_case("curl"))
+    {
         let after = &trimmed[4..];
         if after.is_empty() || after.starts_with(char::is_whitespace) {
             return after.trim_start();
@@ -45,7 +99,6 @@ fn strip_curl_prefix(s: &str) -> &str {
     }
     trimmed
 }
-
 
 fn expand_long_flag_assignments(tokens: Vec<String>) -> Vec<String> {
     let mut out = Vec::with_capacity(tokens.len() + 4);
@@ -108,11 +161,25 @@ fn read_token(chars: &mut Peekable<Chars<'_>>) -> Option<String> {
                 loop {
                     match chars.peek().copied() {
                         None => break,
-                        Some('"') => { chars.next(); break; }
+                        Some('"') => {
+                            chars.next();
+                            break;
+                        }
+                        // Bash keeps backslash literal inside double quotes
+                        // except before `$`, backtick, `"`, `\` and newline.
+                        // Dropping it unconditionally corrupted paths like
+                        // `C:\tmp\x` pasted from real curl commands.
                         Some('\\') => {
                             chars.next();
-                            if let Some(c) = chars.next() {
-                                token.push(c);
+                            match chars.peek().copied() {
+                                Some(c @ ('$' | '`' | '"' | '\\')) => {
+                                    chars.next();
+                                    token.push(c);
+                                }
+                                Some('\n') => {
+                                    chars.next();
+                                }
+                                _ => token.push('\\'),
                             }
                         }
                         Some(_) => token.push(chars.next().unwrap()),
@@ -139,7 +206,10 @@ fn read_token(chars: &mut Peekable<Chars<'_>>) -> Option<String> {
                                 Some('b') => token.push('\x08'),
                                 Some('f') => token.push('\x0C'),
                                 Some('v') => token.push('\x0B'),
-                                Some(c) => { token.push('\\'); token.push(c); }
+                                Some(c) => {
+                                    token.push('\\');
+                                    token.push(c);
+                                }
                                 None => break,
                             },
                             Some(c) => token.push(c),
@@ -242,9 +312,13 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
             "--json" => {
                 if let Some(d) = iter.next() {
                     result.body = Some(d);
-                    result.header.entry("Content-Type".to_string())
+                    result
+                        .header
+                        .entry("Content-Type".to_string())
                         .or_insert_with(|| "application/json".to_string());
-                    result.header.entry("Accept".to_string())
+                    result
+                        .header
+                        .entry("Accept".to_string())
                         .or_insert_with(|| "application/json".to_string());
                 }
             }
@@ -252,13 +326,17 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
             "-u" | "--user" => {
                 if let Some(creds) = iter.next() {
                     let encoded = general_purpose::STANDARD.encode(creds.as_bytes());
-                    result.header.insert("Authorization".to_string(), format!("Basic {}", encoded));
+                    result
+                        .header
+                        .insert("Authorization".to_string(), format!("Basic {}", encoded));
                 }
             }
 
             "--oauth2-bearer" => {
                 if let Some(token) = iter.next() {
-                    result.header.insert("Authorization".to_string(), format!("Bearer {}", token));
+                    result
+                        .header
+                        .insert("Authorization".to_string(), format!("Bearer {}", token));
                 }
             }
 
@@ -301,7 +379,11 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
     match result.method.as_deref() {
         None | Some("") => {
             let has_payload = result.body.is_some() || !result.form.is_empty();
-            result.method = Some(if has_payload { "POST".to_string() } else { "GET".to_string() });
+            result.method = Some(if has_payload {
+                "POST".to_string()
+            } else {
+                "GET".to_string()
+            });
         }
         _ => {}
     }
@@ -331,11 +413,19 @@ fn apply_form(raw: &str, force_text: bool, result: &mut ParsedCurl) {
         if !force_text {
             if let Some(path) = val.strip_prefix('@') {
                 let path = path.split(';').next().unwrap_or(path).to_string();
-                result.form.push(CurlForm { key, value: path, is_file: true });
+                result.form.push(CurlForm {
+                    key,
+                    value: path,
+                    is_file: true,
+                });
                 return;
             }
         }
-        result.form.push(CurlForm { key, value: val.to_string(), is_file: false });
+        result.form.push(CurlForm {
+            key,
+            value: val.to_string(),
+            is_file: false,
+        });
     }
 }
 
@@ -346,12 +436,18 @@ fn append_body(body: &mut Option<String>, new_data: &str) {
     });
 }
 
-
 fn is_cookie_attribute(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        "path" | "domain" | "expires" | "max-age" | "secure" | "httponly"
-            | "samesite" | "partitioned" | "priority"
+        "path"
+            | "domain"
+            | "expires"
+            | "max-age"
+            | "secure"
+            | "httponly"
+            | "samesite"
+            | "partitioned"
+            | "priority"
     )
 }
 
@@ -508,7 +604,11 @@ where
             }
             'd' => {
                 let rest: String = chars[i + 1..].iter().collect();
-                let data = if !rest.is_empty() { rest } else { iter.next().unwrap_or_default() };
+                let data = if !rest.is_empty() {
+                    rest
+                } else {
+                    iter.next().unwrap_or_default()
+                };
                 if !data.starts_with('@') {
                     append_body(&mut result.body, &data);
                 }
@@ -529,7 +629,9 @@ where
             'u' => {
                 if let Some(creds) = iter.next() {
                     let encoded = general_purpose::STANDARD.encode(creds.as_bytes());
-                    result.header.insert("Authorization".to_string(), format!("Basic {}", encoded));
+                    result
+                        .header
+                        .insert("Authorization".to_string(), format!("Basic {}", encoded));
                 }
                 return;
             }
@@ -541,5 +643,3 @@ where
         i += 1;
     }
 }
-
-

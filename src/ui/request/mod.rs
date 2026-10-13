@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod body;
+pub mod cell;
 pub mod headers;
 pub mod params;
 pub mod scripts;

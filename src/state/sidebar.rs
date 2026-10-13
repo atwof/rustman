@@ -16,9 +16,19 @@ pub fn group_rename_input_id(group_id: &str) -> iced::widget::Id {
 /// carry their collection because `RenameRequest` needs it to find the row.
 #[derive(Debug, Clone)]
 pub enum RenameBackup {
-    Collection { id: String, name: String },
-    Group { id: String, name: String },
-    Request { id: String, collection_id: String, name: String },
+    Collection {
+        id: String,
+        name: String,
+    },
+    Group {
+        id: String,
+        name: String,
+    },
+    Request {
+        id: String,
+        collection_id: String,
+        name: String,
+    },
 }
 pub fn collection_rename_input_id(collection_id: &str) -> iced::widget::Id {
     format!("collection-rename-{collection_id}").into()

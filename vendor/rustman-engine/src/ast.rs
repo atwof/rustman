@@ -2,8 +2,15 @@
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Let { name: String, value: Expr },
-    If { cond: Expr, then_branch: Vec<Stmt>, else_branch: Vec<Stmt> },
+    Let {
+        name: String,
+        value: Expr,
+    },
+    If {
+        cond: Expr,
+        then_branch: Vec<Stmt>,
+        else_branch: Vec<Stmt>,
+    },
     Expr(Expr),
 }
 

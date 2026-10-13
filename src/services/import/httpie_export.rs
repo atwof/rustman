@@ -29,7 +29,9 @@ pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
     let export: HttpieExport =
         serde_json::from_str(json).map_err(|e| format!("Not a valid HTTPie export: {e}"))?;
 
-    let col_name = export.name.unwrap_or_else(|| "Imported from HTTPie".to_owned());
+    let col_name = export
+        .name
+        .unwrap_or_else(|| "Imported from HTTPie".to_owned());
 
     let mut requests = Vec::new();
 
@@ -46,7 +48,12 @@ pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
             for (key, value) in h {
                 let disabled = key.starts_with('!');
                 let clean_key = key.trim_start_matches('!');
-                headers.push(KeyValue { id: uuid::Uuid::new_v4().to_string(), key: clean_key.to_owned(), value, enabled: !disabled });
+                headers.push(KeyValue {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    key: clean_key.to_owned(),
+                    value,
+                    enabled: !disabled,
+                });
             }
         }
 
@@ -93,5 +100,9 @@ pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
         req.collection_id = col_id.clone();
     }
 
-    Ok(vec![ImportedCollection { collection, requests, groups: Vec::new() }])
+    Ok(vec![ImportedCollection {
+        collection,
+        requests,
+        groups: Vec::new(),
+    }])
 }

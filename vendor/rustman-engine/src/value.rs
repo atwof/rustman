@@ -65,7 +65,9 @@ impl Value {
                 Value::Array(items.iter().map(Value::from_json).collect())
             }
             serde_json::Value::Object(map) => Value::Object(
-                map.iter().map(|(k, v)| (k.clone(), Value::from_json(v))).collect(),
+                map.iter()
+                    .map(|(k, v)| (k.clone(), Value::from_json(v)))
+                    .collect(),
             ),
         }
     }
@@ -92,9 +94,14 @@ impl Value {
                 }
             }
             Value::String(s) => serde_json::Value::String(s.clone()),
-            Value::Array(items) => serde_json::Value::Array(items.iter().map(Value::to_json).collect()),
+            Value::Array(items) => {
+                serde_json::Value::Array(items.iter().map(Value::to_json).collect())
+            }
             Value::Object(fields) => serde_json::Value::Object(
-                fields.iter().map(|(k, v)| (k.clone(), v.to_json())).collect(),
+                fields
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.to_json()))
+                    .collect(),
             ),
         }
     }

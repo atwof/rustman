@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use super::request::{ApiKeyLocation, AuthType, BodyType, FormField, HttpMethod, KeyValue};
 
-fn default_jwt_algo() -> String { "HS256".to_owned() }
+fn default_jwt_algo() -> String {
+    "HS256".to_owned()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection {
@@ -62,7 +64,12 @@ impl SavedRequest {
     /// data, cookies, scripts — is carried over, so the name is the only
     /// thing the caller has to decide.
     pub fn duplicate_in(&self, collection_id: String, name: String) -> Self {
-        Self { id: uuid::Uuid::new_v4().to_string(), collection_id, name, ..self.clone() }
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            collection_id,
+            name,
+            ..self.clone()
+        }
     }
 
     pub fn new_in(collection_id: String, name: String) -> Self {

@@ -14,7 +14,6 @@ struct Slot {
 }
 
 impl JobManager {
-
     pub fn start(&mut self, kind: JobKind) -> (u64, CancellationToken) {
         let slot = &mut self.slots[kind.index()];
         if let Some(previous) = slot.token.take() {

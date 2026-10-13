@@ -46,7 +46,9 @@ pub fn load(data_dir: &PathBuf) -> Vec<GitRepo> {
 }
 
 pub fn save(data_dir: &PathBuf, repos: &[GitRepo]) {
-    let registry = Registry { repos: repos.to_vec() };
+    let registry = Registry {
+        repos: repos.to_vec(),
+    };
     if let Ok(json) = serde_json::to_string_pretty(&registry) {
         let _ = std::fs::write(registry_path(data_dir), json);
     }
@@ -55,7 +57,13 @@ pub fn save(data_dir: &PathBuf, repos: &[GitRepo]) {
 pub fn slug(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('-').to_owned();
     if trimmed.is_empty() {

@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, container, row, text, Space},
     Background, Border, Color, Element, Length,
+    widget::{Space, button, container, row, text},
 };
 
 use crate::{
@@ -14,18 +14,17 @@ use crate::{
 pub fn view(state: &AppState) -> Option<Element<'_, Message>> {
     let (label, actions, color): (String, Vec<Element<Message>>, Color) = match &state.update {
         UpdateState::Available(info) => (
-            format!("Rustman v{} is available  ·  you have v{}", info.version, info.current),
+            format!(
+                "Rustman v{} is available  ·  you have v{}",
+                info.version, info.current
+            ),
             vec![
                 action("Update now", Message::Update(UpdateMsg::Install), true),
                 action("Dismiss", Message::Update(UpdateMsg::Dismiss), false),
             ],
             Palette::accent(),
         ),
-        UpdateState::Installing => (
-            "Downloading update…".to_owned(),
-            vec![],
-            Palette::accent(),
-        ),
+        UpdateState::Installing => ("Downloading update…".to_owned(), vec![], Palette::accent()),
         UpdateState::Ready(version) => (
             format!("Updated to v{version} — restart to apply"),
             vec![
@@ -36,7 +35,11 @@ pub fn view(state: &AppState) -> Option<Element<'_, Message>> {
         ),
         UpdateState::Failed(err) => (
             format!("Update failed: {err}"),
-            vec![action("Dismiss", Message::Update(UpdateMsg::Dismiss), false)],
+            vec![action(
+                "Dismiss",
+                Message::Update(UpdateMsg::Dismiss),
+                false,
+            )],
             Palette::ERROR,
         ),
         UpdateState::Idle | UpdateState::Checking | UpdateState::UpToDate => return None,
@@ -57,7 +60,11 @@ pub fn view(state: &AppState) -> Option<Element<'_, Message>> {
         container(bar)
             .style(move |_| container::Style {
                 background: Some(Background::Color(tint)),
-                border: Border { color, width: 0.0, radius: 0.0.into() },
+                border: Border {
+                    color,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
                 ..Default::default()
             })
             .padding([6, 12])
@@ -68,18 +75,23 @@ pub fn view(state: &AppState) -> Option<Element<'_, Message>> {
 
 fn action(label: &str, msg: Message, primary: bool) -> Element<'static, Message> {
     let label = label.to_owned();
-    button(
-        text(label)
-            .size(11)
-            .color(if primary { Color::WHITE } else { Palette::text_muted() }),
-    )
+    button(text(label).size(11).color(if primary {
+        Color::WHITE
+    } else {
+        Palette::text_muted()
+    }))
     .on_press(msg)
     .style(move |_t, status| {
         let hovered = matches!(status, iced::widget::button::Status::Hovered);
         let bg = if primary {
             let a = Palette::accent();
             Some(Background::Color(if hovered {
-                Color { r: a.r + 0.06, g: a.g + 0.06, b: a.b + 0.04, a: 1.0 }
+                Color {
+                    r: a.r + 0.06,
+                    g: a.g + 0.06,
+                    b: a.b + 0.04,
+                    a: 1.0,
+                }
             } else {
                 a
             }))
@@ -90,8 +102,15 @@ fn action(label: &str, msg: Message, primary: bool) -> Element<'static, Message>
         };
         iced::widget::button::Style {
             background: bg,
-            text_color: if primary { Color::WHITE } else { Palette::text_muted() },
-            border: Border { radius: 5.0.into(), ..Default::default() },
+            text_color: if primary {
+                Color::WHITE
+            } else {
+                Palette::text_muted()
+            },
+            border: Border {
+                radius: 5.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     })

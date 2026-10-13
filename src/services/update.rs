@@ -216,7 +216,11 @@ fn version_gt(a: &str, b: &str) -> bool {
 fn parse_ver(v: &str) -> (u64, u64, u64) {
     let core = v.split(['-', '+']).next().unwrap_or(v);
     let mut it = core.split('.').map(|x| x.trim().parse().unwrap_or(0));
-    (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0))
+    (
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+    )
 }
 
 /// Unpack the platform binary from the downloaded archive and swap it in for the
@@ -239,8 +243,7 @@ fn extract_and_replace(bytes: Vec<u8>) -> Result<(), String> {
 /// Quick validation that a file at `path` is plausibly a native binary.
 /// Checks the ELF / Mach-O / PE magic bytes.
 fn verify_binary(path: &std::path::Path) -> Result<(), String> {
-    let magic = std::fs::read(path)
-        .map_err(|e| e.to_string())?;
+    let magic = std::fs::read(path).map_err(|e| e.to_string())?;
     if magic.len() < 4 {
         return Err("extracted binary is too small".into());
     }
@@ -248,9 +251,7 @@ fn verify_binary(path: &std::path::Path) -> Result<(), String> {
         // ELF  (Linux)
         [0x7f, b'E', b'L', b'F'] => Ok(()),
         // Mach-O 64-bit  (macOS, fat binary)
-        [0xcf, 0xfa, 0xed, 0xfe] | [0xca, 0xfe, 0xba, 0xbe] | [0xbe, 0xba, 0xfe, 0xca] => {
-            Ok(())
-        }
+        [0xcf, 0xfa, 0xed, 0xfe] | [0xca, 0xfe, 0xba, 0xbe] | [0xbe, 0xba, 0xfe, 0xca] => Ok(()),
         // PE  (Windows)
         [b'M', b'Z', _, _] => Ok(()),
         h => Err(format!(
@@ -286,8 +287,7 @@ fn extract_binary(bytes: &[u8], out: &std::path::Path) -> Result<(), String> {
 #[cfg(target_os = "windows")]
 fn extract_binary(bytes: &[u8], out: &std::path::Path) -> Result<(), String> {
     use std::io::Read;
-    let mut zip =
-        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
         if f.name().rsplit(['/', '\\']).next() == Some(BIN_NAME) {
@@ -317,7 +317,10 @@ mod tests {
     }
 
     fn asset(name: &str) -> GhAsset {
-        GhAsset { name: name.to_owned(), browser_download_url: format!("https://example.test/{name}") }
+        GhAsset {
+            name: name.to_owned(),
+            browser_download_url: format!("https://example.test/{name}"),
+        }
     }
 
     #[test]
@@ -351,7 +354,10 @@ mod tests {
     fn errors_clearly_when_no_matching_asset_exists() {
         let assets = vec![asset("Rustman-macos-universal.dmg")];
         let err = pick_asset(&assets, "v1.2.3", "macos-universal", ".tar.gz").unwrap_err();
-        assert!(err.contains("v1.2.3"), "error should name the release: {err}");
+        assert!(
+            err.contains("v1.2.3"),
+            "error should name the release: {err}"
+        );
     }
 
     #[test]
@@ -360,9 +366,13 @@ mod tests {
         // after self_replace renames the new binary onto the running
         // process's own path, /proc/self/exe keeps resolving to the old,
         // now-unlinked inode with this literal suffix appended.
-        let deleted = std::path::PathBuf::from("/home/anime/work/rustman/target/debug/rustman (deleted)");
+        let deleted =
+            std::path::PathBuf::from("/home/anime/work/rustman/target/debug/rustman (deleted)");
         let real = strip_deleted_suffix(deleted);
-        assert_eq!(real, std::path::PathBuf::from("/home/anime/work/rustman/target/debug/rustman"));
+        assert_eq!(
+            real,
+            std::path::PathBuf::from("/home/anime/work/rustman/target/debug/rustman")
+        );
     }
 
     #[test]

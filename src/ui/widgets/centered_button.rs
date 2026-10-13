@@ -14,7 +14,7 @@
 //! axes fixes it. That is the pattern the icon-rail buttons already use; this
 //! module makes it reusable instead of re-derived per call site.
 
-use iced::widget::{button, container, Button};
+use iced::widget::{Button, button, container};
 use iced::{Element, Length};
 
 /// Wraps `content` so it is centred within the button's box.
@@ -26,9 +26,7 @@ use iced::{Element, Length};
 ///     .height(32)
 ///     .padding([0, 16])
 /// ```
-pub fn centered<'a, Message: 'a>(
-    content: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
+pub fn centered<'a, Message: 'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     // Only the vertical axis is centred, and the width deliberately stays
     // `Shrink`.
     //
@@ -37,9 +35,7 @@ pub fn centered<'a, Message: 'a>(
     // content, so it would stretch to fill its row instead of hugging its
     // label. `center_y(Length::Fill)` fills only the height the button already
     // has (its fixed height), which is exactly what centres the text.
-    container(content)
-        .center_y(Length::Fill)
-        .into()
+    container(content).center_y(Length::Fill).into()
 }
 
 /// A button whose label is vertically and horizontally centred within a fixed
@@ -78,7 +74,6 @@ pub const BUTTON_HEIGHT_SM: f32 = 26.0;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iced::advanced::Widget;
 
     /// The wrapper must not claim horizontal space.
     ///
@@ -111,6 +106,10 @@ mod tests {
         let element: iced::Element<'_, ()> = btn.into();
         let size = element.as_widget().size_hint();
 
-        assert_eq!(size.width, iced::Length::Shrink, "button must not be full-width");
+        assert_eq!(
+            size.width,
+            iced::Length::Shrink,
+            "button must not be full-width"
+        );
     }
 }

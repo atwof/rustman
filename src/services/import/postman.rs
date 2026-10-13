@@ -6,7 +6,6 @@ use crate::domain::{
     request::{ApiKeyLocation, AuthType, BodyType, FormField, FormFieldType, HttpMethod, KeyValue},
 };
 
-
 #[derive(Deserialize)]
 struct PostmanCollection {
     info: PostmanInfo,
@@ -117,7 +116,11 @@ pub fn import(json: &str) -> Result<Vec<ImportedCollection>, String> {
     // in Postman instead of being flattened into one long request list
     // (issue #53).
     let (requests, groups) = convert_items(&collection.id, &collection.id, true, 0, &col.item);
-    Ok(vec![ImportedCollection { collection, requests, groups }])
+    Ok(vec![ImportedCollection {
+        collection,
+        requests,
+        groups,
+    }])
 }
 
 /// Convert a Postman item list into (direct request leaves, child groups)
@@ -211,7 +214,12 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
 
     let (body, body_type, form_fields, graphql_variables) = match &r.body {
         Some(b) => match b.mode.as_deref() {
-            Some("raw") => (b.raw.clone().unwrap_or_default(), BodyType::Json, vec![], String::new()),
+            Some("raw") => (
+                b.raw.clone().unwrap_or_default(),
+                BodyType::Json,
+                vec![],
+                String::new(),
+            ),
             Some("graphql") => {
                 let gql = b.graphql.as_ref();
                 let query = gql.and_then(|g| g.query.clone()).unwrap_or_default();
@@ -288,7 +296,7 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
 // ── Export ────────────────────────────────────────────────────────────────────
 
 pub fn export(imported: &ImportedCollection) -> String {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     let mut items: Vec<Value> = imported.groups.iter().map(export_group).collect();
     items.extend(imported.requests.iter().map(export_request));
@@ -315,24 +323,22 @@ fn export_group(group: &ImportedGroup) -> serde_json::Value {
 }
 
 fn export_request(req: &SavedRequest) -> serde_json::Value {
-    use serde_json::{json, Value};
-            let headers: Vec<Value> = req
-                .headers
-                .iter()
-                .map(|h| {
-                    json!({ "key": h.key, "value": h.value, "disabled": !h.enabled })
-                })
-                .collect();
+    use serde_json::{Value, json};
+    let headers: Vec<Value> = req
+        .headers
+        .iter()
+        .map(|h| json!({ "key": h.key, "value": h.value, "disabled": !h.enabled }))
+        .collect();
 
-            let body: Value = match req.body_type {
-                BodyType::Json => json!({
-                    "mode": "raw",
-                    "raw": req.body,
-                    "options": { "raw": { "language": "json" } },
-                }),
-                BodyType::Text => json!({ "mode": "raw", "raw": req.body }),
-                BodyType::FormData => {
-                    let fields: Vec<Value> = req
+    let body: Value = match req.body_type {
+        BodyType::Json => json!({
+            "mode": "raw",
+            "raw": req.body,
+            "options": { "raw": { "language": "json" } },
+        }),
+        BodyType::Text => json!({ "mode": "raw", "raw": req.body }),
+        BodyType::FormData => {
+            let fields: Vec<Value> = req
                         .form_data_fields
                         .iter()
                         .map(|f| {
@@ -343,25 +349,25 @@ fn export_request(req: &SavedRequest) -> serde_json::Value {
                             })
                         })
                         .collect();
-                    json!({ "mode": "formdata", "formdata": fields })
-                }
-                BodyType::GraphQL => json!({
-                    "mode": "graphql",
-                    "graphql": {
-                        "query": req.body,
-                        "variables": req.graphql_variables,
-                    },
-                }),
-                BodyType::None => json!({ "mode": "none" }),
-            };
+            json!({ "mode": "formdata", "formdata": fields })
+        }
+        BodyType::GraphQL => json!({
+            "mode": "graphql",
+            "graphql": {
+                "query": req.body,
+                "variables": req.graphql_variables,
+            },
+        }),
+        BodyType::None => json!({ "mode": "none" }),
+    };
 
-            json!({
-                "name": req.name,
-                "request": {
-                    "method": req.method.as_str(),
-                    "header": headers,
-                    "url": { "raw": req.url },
-                    "body": body,
-                }
-            })
+    json!({
+        "name": req.name,
+        "request": {
+            "method": req.method.as_str(),
+            "header": headers,
+            "url": { "raw": req.url },
+            "body": body,
+        }
+    })
 }

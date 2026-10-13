@@ -20,7 +20,6 @@ impl WsHandle {
     }
 }
 
-
 fn ensure_crypto_provider() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {

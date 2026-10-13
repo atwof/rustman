@@ -1,8 +1,6 @@
-use iced::advanced::widget::{self, Widget, Tree};
-use iced::advanced::{layout, mouse, renderer, Clipboard, Layout, Shell};
-use iced::{
-    Border, Color, Element, Event, Length, Rectangle, Size,
-};
+use iced::advanced::widget::{self, Tree, Widget};
+use iced::advanced::{Clipboard, Layout, Shell, layout, mouse, renderer};
+use iced::{Element, Event, Length, Rectangle, Size};
 
 #[derive(Clone)]
 struct State {
@@ -50,7 +48,12 @@ where
     }
 
     fn state(&self) -> widget::tree::State {
-        widget::tree::State::new(State { dragging: false, hovered: false, start_width: 0.0, start_x: 0.0 })
+        widget::tree::State::new(State {
+            dragging: false,
+            hovered: false,
+            start_width: 0.0,
+            start_x: 0.0,
+        })
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -74,32 +77,16 @@ where
 
     fn draw(
         &self,
-        tree: &Tree,
-        renderer: &mut Renderer,
+        _tree: &Tree,
+        _renderer: &mut Renderer,
         _theme: &Theme,
         _style: &renderer::Style,
-        layout: Layout<'_>,
+        _layout: Layout<'_>,
         _cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
-        let state = tree.state.downcast_ref::<State>();
-        let bounds = layout.bounds();
-        let color = if state.dragging || state.hovered {
-            Color::from_rgba(0.5, 0.5, 0.5, 0.6)
-        } else {
-            Color::from_rgba(0.3, 0.3, 0.3, 0.3)
-        };
-
-        renderer.fill_quad(
-            renderer::Quad {
-                bounds: Rectangle { x: bounds.x + 3.0, y: bounds.y, width: 2.0, height: bounds.height },
-                border: Border { radius: 1.0.into(), width: 0.0, color: Color::TRANSPARENT },
-                ..Default::default()
-            },
-            color,
-        );
+        // No visible handle — sidebar panel already has its own border.
     }
-
     fn mouse_interaction(
         &self,
         _tree: &Tree,

@@ -2,7 +2,7 @@
 
 use std::io::Cursor;
 
-use calamine::{open_workbook_auto_from_rs, Reader};
+use calamine::{Reader, open_workbook_auto_from_rs};
 
 /// A parsed spreadsheet, ready for a simple table preview.
 #[derive(Debug, Clone)]
@@ -37,8 +37,8 @@ pub fn parse_first_sheet(bytes: &[u8]) -> Result<ParsedSheet, String> {
 mod tests {
     use super::*;
     use std::io::Write;
-    use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
+    use zip::write::SimpleFileOptions;
 
     /// Hand-builds a minimal, spec-valid .xlsx (a zip of a few small XML
     /// parts) entirely in memory, so this test needs no external fixture

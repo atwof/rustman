@@ -46,5 +46,7 @@ impl ParsedBodyCache {
 }
 
 impl Default for ParsedBodyCache {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

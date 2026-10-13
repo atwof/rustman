@@ -27,7 +27,10 @@ pub fn import(input: &str) -> Result<Vec<ImportedCollection>, String> {
 // ── OpenAPI 3.x ───────────────────────────────────────────────────────────────
 
 fn import_openapi_v3(v: &Value) -> Result<Vec<ImportedCollection>, String> {
-    let info = v.get("info").and_then(|i| i.as_object()).ok_or("missing 'info'")?;
+    let info = v
+        .get("info")
+        .and_then(|i| i.as_object())
+        .ok_or("missing 'info'")?;
     let name = info
         .get("title")
         .and_then(|t| t.as_str())
@@ -35,7 +38,10 @@ fn import_openapi_v3(v: &Value) -> Result<Vec<ImportedCollection>, String> {
         .to_owned();
 
     let base_url = extract_base_url_oas3(v);
-    let paths = v.get("paths").and_then(|p| p.as_object()).ok_or("missing 'paths'")?;
+    let paths = v
+        .get("paths")
+        .and_then(|p| p.as_object())
+        .ok_or("missing 'paths'")?;
 
     let collection = Collection {
         id: uuid::Uuid::new_v4().to_string(),
@@ -46,7 +52,11 @@ fn import_openapi_v3(v: &Value) -> Result<Vec<ImportedCollection>, String> {
 
     let items = walk_paths(&col_id, &base_url, paths, extract_request_body_oas3);
 
-    Ok(vec![ImportedCollection { collection, requests: items, groups: Vec::new() }])
+    Ok(vec![ImportedCollection {
+        collection,
+        requests: items,
+        groups: Vec::new(),
+    }])
 }
 
 fn extract_base_url_oas3(v: &Value) -> String {
@@ -96,7 +106,10 @@ fn extract_request_body_oas3(op: &Value) -> (String, BodyType) {
 // ── Swagger 2.0 ───────────────────────────────────────────────────────────────
 
 fn import_swagger_v2(v: &Value) -> Result<Vec<ImportedCollection>, String> {
-    let info = v.get("info").and_then(|i| i.as_object()).ok_or("missing 'info'")?;
+    let info = v
+        .get("info")
+        .and_then(|i| i.as_object())
+        .ok_or("missing 'info'")?;
     let name = info
         .get("title")
         .and_then(|t| t.as_str())
@@ -104,7 +117,10 @@ fn import_swagger_v2(v: &Value) -> Result<Vec<ImportedCollection>, String> {
         .to_owned();
 
     let base_url = extract_base_url_swagger(v);
-    let paths = v.get("paths").and_then(|p| p.as_object()).ok_or("missing 'paths'")?;
+    let paths = v
+        .get("paths")
+        .and_then(|p| p.as_object())
+        .ok_or("missing 'paths'")?;
 
     let collection = Collection {
         id: uuid::Uuid::new_v4().to_string(),
@@ -115,7 +131,11 @@ fn import_swagger_v2(v: &Value) -> Result<Vec<ImportedCollection>, String> {
 
     let items = walk_paths(&col_id, &base_url, paths, extract_request_body_swagger);
 
-    Ok(vec![ImportedCollection { collection, requests: items, groups: Vec::new() }])
+    Ok(vec![ImportedCollection {
+        collection,
+        requests: items,
+        groups: Vec::new(),
+    }])
 }
 
 fn extract_base_url_swagger(v: &Value) -> String {
@@ -130,7 +150,9 @@ fn extract_base_url_swagger(v: &Value) -> String {
     if host.is_empty() {
         String::new()
     } else {
-        format!("{}://{}{}", scheme, host, base).trim_end_matches('/').to_owned()
+        format!("{}://{}{}", scheme, host, base)
+            .trim_end_matches('/')
+            .to_owned()
     }
 }
 
@@ -159,13 +181,19 @@ fn walk_paths(
     paths: &serde_json::Map<String, Value>,
     body_fn: impl Fn(&Value) -> (String, BodyType),
 ) -> Vec<SavedRequest> {
-    let methods = ["get", "post", "put", "patch", "delete", "head", "options", "trace"];
+    let methods = [
+        "get", "post", "put", "patch", "delete", "head", "options", "trace",
+    ];
     let mut out = Vec::new();
 
     for (path, path_item) in paths {
-        let Some(po) = path_item.as_object() else { continue };
+        let Some(po) = path_item.as_object() else {
+            continue;
+        };
         for method_str in &methods {
-            let Some(op) = po.get(*method_str) else { continue };
+            let Some(op) = po.get(*method_str) else {
+                continue;
+            };
             let op_name = op
                 .get("summary")
                 .or_else(|| op.get("operationId"))
@@ -283,7 +311,9 @@ fn extract_headers(op: &Value) -> Vec<KeyValue> {
 
 /// Build a minimal JSON example body from a schema object.
 fn build_example_from_schema(schema: Option<&Value>) -> String {
-    let Some(s) = schema else { return String::new() };
+    let Some(s) = schema else {
+        return String::new();
+    };
     let example = match s.get("type").and_then(|t| t.as_str()) {
         Some("object") => {
             let mut map = serde_json::Map::new();
@@ -307,11 +337,12 @@ fn build_example_from_schema(schema: Option<&Value>) -> String {
             });
             serde_json::Value::Array(item.into_iter().collect())
         }
-        Some("string") => serde_json::Value::String(s
-            .get("example")
-            .and_then(|e| e.as_str())
-            .unwrap_or("string")
-            .to_owned()),
+        Some("string") => serde_json::Value::String(
+            s.get("example")
+                .and_then(|e| e.as_str())
+                .unwrap_or("string")
+                .to_owned(),
+        ),
         Some("number") | Some("integer") => s
             .get("example")
             .cloned()
@@ -412,7 +443,11 @@ mod tests {
         assert!(result.is_ok(), "OAS3 Petstore failed: {:?}", result.err());
         let data = result.unwrap();
         assert_eq!(data[0].collection.name, "Swagger Petstore");
-        assert!(data[0].requests.len() >= 2, "expected >= 2 requests, got {}", data[0].requests.len());
+        assert!(
+            data[0].requests.len() >= 2,
+            "expected >= 2 requests, got {}",
+            data[0].requests.len()
+        );
         let get_pets = &data[0].requests[0];
         assert_eq!(get_pets.method.as_str(), "GET");
         assert!(get_pets.url.contains("petstore.swagger.io"));
@@ -426,18 +461,33 @@ mod tests {
         assert!(result.is_ok(), "Storefront OAS3 failed: {:?}", result.err());
         let data = result.unwrap();
         assert_eq!(data[0].collection.name, "E-commerce API");
-        assert!(data[0].requests.len() >= 3, "expected >= 3 endpoints, got {}", data[0].requests.len());
+        assert!(
+            data[0].requests.len() >= 3,
+            "expected >= 3 endpoints, got {}",
+            data[0].requests.len()
+        );
     }
 
     #[test]
     fn real_petstore_swagger2() {
         let spec = include_str!("../../../tests/fixtures/petstore-swagger2.json");
         let result = import(spec);
-        assert!(result.is_ok(), "Swagger 2 Petstore failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Swagger 2 Petstore failed: {:?}",
+            result.err()
+        );
         let data = result.unwrap();
         assert_eq!(data[0].collection.name, "Swagger Petstore");
-        assert!(data[0].requests.len() > 10, "expected many endpoints, got {}", data[0].requests.len());
-        let has_full_url = data[0].requests.iter().any(|r| r.url.contains("petstore.swagger.io"));
+        assert!(
+            data[0].requests.len() > 10,
+            "expected many endpoints, got {}",
+            data[0].requests.len()
+        );
+        let has_full_url = data[0]
+            .requests
+            .iter()
+            .any(|r| r.url.contains("petstore.swagger.io"));
         assert!(has_full_url, "expected full URL with host");
     }
 

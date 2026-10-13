@@ -11,7 +11,9 @@ pub struct AppEnvironment {
 }
 
 pub fn substitute(text: &str, env: Option<&AppEnvironment>) -> String {
-    let Some(env) = env else { return text.to_owned() };
+    let Some(env) = env else {
+        return text.to_owned();
+    };
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find("{{") {

@@ -19,7 +19,9 @@ pub(super) fn handle(state: &mut AppState, msg: PaletteMsg) -> Task<Message> {
             state.palette_selected = 0;
         }
         PaletteMsg::MoveDown => {
-            let last = crate::ui::command_palette::items(state).len().saturating_sub(1);
+            let last = crate::ui::command_palette::items(state)
+                .len()
+                .saturating_sub(1);
             state.palette_selected = state.palette_selected.saturating_add(1).min(last);
         }
         PaletteMsg::MoveUp => {

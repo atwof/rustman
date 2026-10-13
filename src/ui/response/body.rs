@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, image, row, scrollable, text, Space},
     Alignment, Background, Border, Color, Element, Length,
+    widget::{Space, button, column, container, image, row, scrollable, text},
 };
 
 use crate::{
@@ -8,7 +8,10 @@ use crate::{
     message::{Message, ResponseMsg},
     services::spreadsheet::ParsedSheet,
     state::tabs::{PdfPreviewState, RequestTabState, ResponsePreview},
-    ui::{icons, theme::{Palette, MONO, TEXT_SM, TEXT_LG, TEXT_XS}},
+    ui::{
+        icons,
+        theme::{MONO, Palette, TEXT_LG, TEXT_SM, TEXT_XS},
+    },
 };
 
 pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
@@ -107,7 +110,9 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
         };
         row![
             prev,
-            text(format!("Page {}/{}", page + 1, page_count)).size(TEXT_XS).color(Palette::text_muted()),
+            text(format!("Page {}/{}", page + 1, page_count))
+                .size(TEXT_XS)
+                .color(Palette::text_muted()),
             next,
         ]
         .spacing(2)
@@ -119,7 +124,9 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
 
     let toolbar = container(
         row![
-            text(format!("{} lines", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle()),
+            text(format!("{} lines", tab.response_viewer_lines))
+                .size(TEXT_XS)
+                .color(Palette::text_subtle()),
             size_note,
             Space::new().width(Length::Fill),
             page_nav,
@@ -131,17 +138,24 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
                 .spacing(5)
                 .align_y(Alignment::Center),
             )
-                .on_press(Message::Response(ResponseMsg::CopyBody))
-                .style(|_t, status| {
-                    let hovered = matches!(status, iced::widget::button::Status::Hovered);
-                    iced::widget::button::Style {
-                        background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
-                        text_color: Palette::text_muted(),
-                        border: Border { radius: 6.0.into(), ..Default::default() },
+            .on_press(Message::Response(ResponseMsg::CopyBody))
+            .style(|_t, status| {
+                let hovered = matches!(status, iced::widget::button::Status::Hovered);
+                iced::widget::button::Style {
+                    background: if hovered {
+                        Some(Background::Color(Palette::hover()))
+                    } else {
+                        None
+                    },
+                    text_color: Palette::text_muted(),
+                    border: Border {
+                        radius: 6.0.into(),
                         ..Default::default()
-                    }
-                })
-                .padding([4, 8]),
+                    },
+                    ..Default::default()
+                }
+            })
+            .padding([4, 8]),
         ]
         .align_y(Alignment::Center)
         .padding([2, 12]),
@@ -175,7 +189,9 @@ fn preview_unavailable_banner(reason: &str) -> Element<'static, Message> {
             text("HTML preview unavailable — showing source")
                 .size(TEXT_SM)
                 .color(Palette::WARNING),
-            text(reason.to_owned()).size(TEXT_XS).color(Palette::text_subtle()),
+            text(reason.to_owned())
+                .size(TEXT_XS)
+                .color(Palette::text_subtle()),
         ]
         .spacing(2),
     )
@@ -199,8 +215,11 @@ fn preview_unavailable_banner(reason: &str) -> Element<'static, Message> {
 /// positioned to exactly cover it from outside Iced's own rendering.
 pub const HTML_PANEL_ID: iced::widget::Id = iced::widget::Id::new("response-html-panel");
 
-fn html_view() -> Element<'static, Message> {    container(
-        text("Loading preview…").size(TEXT_SM).color(Palette::text_subtle()),
+fn html_view() -> Element<'static, Message> {
+    container(
+        text("Loading preview…")
+            .size(TEXT_SM)
+            .color(Palette::text_subtle()),
     )
     .id(HTML_PANEL_ID)
     .width(Length::Fill)
@@ -219,8 +238,7 @@ fn simple_html_view<'a>(rendered: &'a str) -> Element<'a, Message> {
             text("No WebKit in this build — showing page text. Copy the response for full source.")
                 .size(TEXT_XS)
                 .color(Palette::text_subtle()),
-            scrollable(text(rendered).size(TEXT_SM).color(Palette::text()))
-                .height(Length::Fill),
+            scrollable(text(rendered).size(TEXT_SM).color(Palette::text())).height(Length::Fill),
         ]
         .spacing(4)
         .height(Length::Fill),
@@ -259,7 +277,12 @@ fn kbd_chip(label: &str) -> Element<'static, Message> {
             radius: 5.0.into(),
         },
         shadow: iced::Shadow {
-            color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.4 },
+            color: Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.4,
+            },
             offset: iced::Vector::new(0.0, 1.5),
             blur_radius: 0.0,
         },
@@ -269,15 +292,24 @@ fn kbd_chip(label: &str) -> Element<'static, Message> {
 }
 
 fn empty_view() -> Element<'static, Message> {
-    let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+    let modifier = if cfg!(target_os = "macos") {
+        "Cmd"
+    } else {
+        "Ctrl"
+    };
     let content = column![
-        text("Send a request").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+        text("Send a request")
+            .size(TEXT_LG)
+            .color(Palette::text())
+            .font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(8),
         row![
             text("Press").size(TEXT_SM).color(Palette::text_subtle()),
             kbd_chip(modifier),
             kbd_chip("Enter"),
-            text("or click Send to run the request").size(TEXT_SM).color(Palette::text_subtle()),
+            text("or click Send to run the request")
+                .size(TEXT_SM)
+                .color(Palette::text_subtle()),
         ]
         .spacing(6)
         .align_y(Alignment::Center),
@@ -294,9 +326,14 @@ fn empty_view() -> Element<'static, Message> {
 
 fn error_view(err: &str) -> Element<'static, Message> {
     let content = column![
-        text("Request failed").size(TEXT_LG).color(Palette::ERROR).font(crate::ui::theme::UI_FONT_MEDIUM),
+        text("Request failed")
+            .size(TEXT_LG)
+            .color(Palette::ERROR)
+            .font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(4),
-        text(err.to_owned()).size(TEXT_SM).color(Palette::text_muted()),
+        text(err.to_owned())
+            .size(TEXT_SM)
+            .color(Palette::text_muted()),
     ]
     .max_width(480)
     .align_x(Alignment::Center);
@@ -311,7 +348,10 @@ fn error_view(err: &str) -> Element<'static, Message> {
 }
 
 fn binary_view(resp: &HttpResponse) -> Element<'static, Message> {
-    binary_view_with_note(resp, "This response isn't valid text, so it can't be shown in the editor.")
+    binary_view_with_note(
+        resp,
+        "This response isn't valid text, so it can't be shown in the editor.",
+    )
 }
 
 fn binary_view_with_note(resp: &HttpResponse, note: &str) -> Element<'static, Message> {
@@ -331,11 +371,18 @@ fn binary_view_with_note(resp: &HttpResponse, note: &str) -> Element<'static, Me
     };
 
     let content = column![
-        text("Binary response").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+        text("Binary response")
+            .size(TEXT_LG)
+            .color(Palette::text())
+            .font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(4),
-        text(format!("{content_type} · {size_str}")).size(TEXT_SM).color(Palette::text_muted()),
+        text(format!("{content_type} · {size_str}"))
+            .size(TEXT_SM)
+            .color(Palette::text_muted()),
         Space::new().height(2),
-        text(note.to_owned()).size(TEXT_SM).color(Palette::text_subtle()),
+        text(note.to_owned())
+            .size(TEXT_SM)
+            .color(Palette::text_subtle()),
     ]
     .align_x(Alignment::Center);
 
@@ -356,11 +403,11 @@ fn spreadsheet_view(sheet: &ParsedSheet) -> Element<'static, Message> {
         let mut row_widget = row![].spacing(0);
         for cell in cells {
             row_widget = row_widget.push(
-                container(
-                    text(cell.clone())
-                        .size(TEXT_SM)
-                        .color(if is_header { Palette::text() } else { Palette::text_muted() }),
-                )
+                container(text(cell.clone()).size(TEXT_SM).color(if is_header {
+                    Palette::text()
+                } else {
+                    Palette::text_muted()
+                }))
                 .padding([6, 10])
                 .width(Length::Fixed(140.0))
                 .style(move |_| container::Style {
@@ -369,7 +416,11 @@ fn spreadsheet_view(sheet: &ParsedSheet) -> Element<'static, Message> {
                     } else {
                         None
                     },
-                    border: Border { color: Palette::border(), width: 1.0, radius: 0.0.into() },
+                    border: Border {
+                        color: Palette::border(),
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
                     ..Default::default()
                 }),
             );
@@ -378,20 +429,25 @@ fn spreadsheet_view(sheet: &ParsedSheet) -> Element<'static, Message> {
     }
 
     let toolbar = container(
-        text(format!("Sheet: {} · {} row(s)", sheet.sheet_name, sheet.rows.len()))
-            .size(TEXT_XS)
-            .color(Palette::text_subtle()),
+        text(format!(
+            "Sheet: {} · {} row(s)",
+            sheet.sheet_name,
+            sheet.rows.len()
+        ))
+        .size(TEXT_XS)
+        .color(Palette::text_subtle()),
     )
     .padding([6, 12]);
 
     column![
         toolbar,
-        scrollable(rows_col).direction(scrollable::Direction::Both {
-            vertical: scrollable::Scrollbar::default(),
-            horizontal: scrollable::Scrollbar::default(),
-        })
-        .width(Length::Fill)
-        .height(Length::Fill),
+        scrollable(rows_col)
+            .direction(scrollable::Direction::Both {
+                vertical: scrollable::Scrollbar::default(),
+                horizontal: scrollable::Scrollbar::default(),
+            })
+            .width(Length::Fill)
+            .height(Length::Fill),
     ]
     .height(Length::Fill)
     .into()
@@ -399,22 +455,28 @@ fn spreadsheet_view(sheet: &ParsedSheet) -> Element<'static, Message> {
 
 /// A rendered PDF page with Prev/Next page navigation.
 fn pdf_view(preview: &PdfPreviewState) -> Element<'static, Message> {
-    let prev = button(text("< Prev").size(TEXT_SM))
-        .on_press_maybe((preview.current_page > 0).then(|| {
-            Message::Response(ResponseMsg::PdfPageRequested(preview.current_page - 1))
-        }))
-        .padding([4, 10]);
-    let next = button(text("Next >").size(TEXT_SM))
-        .on_press_maybe((preview.current_page + 1 < preview.page_count).then(|| {
-            Message::Response(ResponseMsg::PdfPageRequested(preview.current_page + 1))
-        }))
-        .padding([4, 10]);
+    let prev =
+        button(text("< Prev").size(TEXT_SM))
+            .on_press_maybe((preview.current_page > 0).then(|| {
+                Message::Response(ResponseMsg::PdfPageRequested(preview.current_page - 1))
+            }))
+            .padding([4, 10]);
+    let next =
+        button(text("Next >").size(TEXT_SM))
+            .on_press_maybe((preview.current_page + 1 < preview.page_count).then(|| {
+                Message::Response(ResponseMsg::PdfPageRequested(preview.current_page + 1))
+            }))
+            .padding([4, 10]);
 
     let toolbar = row![
         prev,
-        text(format!("Page {} of {}", preview.current_page + 1, preview.page_count.max(1)))
-            .size(TEXT_SM)
-            .color(Palette::text_muted()),
+        text(format!(
+            "Page {} of {}",
+            preview.current_page + 1,
+            preview.page_count.max(1)
+        ))
+        .size(TEXT_SM)
+        .color(Palette::text_muted()),
         next,
     ]
     .spacing(10)
@@ -431,12 +493,16 @@ fn pdf_view(preview: &PdfPreviewState) -> Element<'static, Message> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into(),
-        None => container(text("Rendering…").size(TEXT_SM).color(Palette::text_subtle()))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into(),
+        None => container(
+            text("Rendering…")
+                .size(TEXT_SM)
+                .color(Palette::text_subtle()),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into(),
     };
 
     column![toolbar, page].height(Length::Fill).into()
@@ -453,7 +519,9 @@ fn loading_view<'a>(spinner_frame: u32) -> Element<'a, Message> {
                 .line_height(iced::widget::text::LineHeight::Relative(1.0))
                 .color(Palette::accent()),
             Space::new().height(14),
-            text("sending request…").size(13).color(Palette::text_muted()),
+            text("sending request…")
+                .size(13)
+                .color(Palette::text_muted()),
         ]
         .spacing(0)
         .align_x(Alignment::Center),

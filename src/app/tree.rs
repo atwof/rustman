@@ -142,7 +142,9 @@ pub fn insert_collection(state: &mut AppState, imported: ImportedCollection) {
         let old_group_ids: Vec<String> = state
             .groups
             .iter()
-            .filter(|g| root_collection_of(&state.groups, &g.id).as_deref() == Some(col.id.as_str()))
+            .filter(|g| {
+                root_collection_of(&state.groups, &g.id).as_deref() == Some(col.id.as_str())
+            })
             .map(|g| g.id.clone())
             .collect();
         for gid in old_group_ids {

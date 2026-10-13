@@ -67,7 +67,12 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
         }
         GitMsg::OpenFolder => {
             return Task::perform(
-                async { rfd::AsyncFileDialog::new().pick_folder().await.map(|h| h.path().to_path_buf()) },
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .pick_folder()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
                 |picked| Message::Git(GitMsg::FolderPicked(picked)),
             );
         }
@@ -81,7 +86,13 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                         let collections = vcs::load_collections_from(&path)?;
                         let remote_url = vcs::remote_url(&path);
                         let global_script = vcs::read_global_script(&path);
-                        Ok::<RepoAdd, String>(RepoAdd { name, path, remote_url, collections, global_script })
+                        Ok::<RepoAdd, String>(RepoAdd {
+                            name,
+                            path,
+                            remote_url,
+                            collections,
+                            global_script,
+                        })
                     })
                     .await
                     .map_err(|e| e.to_string())
@@ -91,9 +102,18 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             );
         }
         GitMsg::RepoAdded(payload) => {
-            let RepoAddPayload { name, path, remote_url, collections, global_script } = *payload;
+            let RepoAddPayload {
+                name,
+                path,
+                remote_url,
+                collections,
+                global_script,
+            } = *payload;
             let count = collections.len();
-            let ids: Vec<String> = collections.iter().map(|ic| ic.collection.id.clone()).collect();
+            let ids: Vec<String> = collections
+                .iter()
+                .map(|ic| ic.collection.id.clone())
+                .collect();
             apply_sync(state, collections);
             apply_global_script(state, global_script);
             let id = uuid::Uuid::new_v4().to_string();
@@ -162,7 +182,10 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                     &global_test_script,
                 )?;
                 vcs::commit(&repo_path, &identity, &message)?;
-                Ok(format!("Committed as {} <{}>", identity.name, identity.email))
+                Ok(format!(
+                    "Committed as {} <{}>",
+                    identity.name, identity.email
+                ))
             });
         }
         GitMsg::SetRemote => {
@@ -271,8 +294,16 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             });
         }
         GitMsg::Synced(payload) => {
-            let SyncPayload { repo_id, collections, label, global_script } = *payload;
-            let ids: Vec<String> = collections.iter().map(|ic| ic.collection.id.clone()).collect();
+            let SyncPayload {
+                repo_id,
+                collections,
+                label,
+                global_script,
+            } = *payload;
+            let ids: Vec<String> = collections
+                .iter()
+                .map(|ic| ic.collection.id.clone())
+                .collect();
 
             let incoming: HashSet<&String> = ids.iter().collect();
             for owned in owned_collection_ids(state, &repo_id) {
@@ -437,7 +468,12 @@ fn load_view(
             }),
         }
     }
-    Ok(Box::new(GitView { summaries, status, branches, log }))
+    Ok(Box::new(GitView {
+        summaries,
+        status,
+        branches,
+        log,
+    }))
 }
 
 fn blocking<F>(op: F) -> Task<Message>
@@ -472,12 +508,14 @@ where
                 .and_then(|r| r)
         },
         move |res| match res {
-            Ok((collections, global_script, label)) => Message::Git(GitMsg::Synced(Box::new(SyncPayload {
-                repo_id: repo_id.clone(),
-                collections,
-                label,
-                global_script,
-            }))),
+            Ok((collections, global_script, label)) => {
+                Message::Git(GitMsg::Synced(Box::new(SyncPayload {
+                    repo_id: repo_id.clone(),
+                    collections,
+                    label,
+                    global_script,
+                })))
+            }
             Err(e) => Message::Git(GitMsg::Error(e)),
         },
     )
@@ -495,7 +533,11 @@ fn owned_ids(repos: &[GitRepo], all_collection_ids: &[String], repo_id: &str) ->
             .filter(|r| r.id != repos::LOCAL_ID)
             .flat_map(|r| r.collection_ids.iter())
             .collect();
-        all_collection_ids.iter().filter(|id| !claimed.contains(id)).cloned().collect()
+        all_collection_ids
+            .iter()
+            .filter(|id| !claimed.contains(id))
+            .cloned()
+            .collect()
     } else {
         repos
             .iter()
@@ -505,11 +547,12 @@ fn owned_ids(repos: &[GitRepo], all_collection_ids: &[String], repo_id: &str) ->
     }
 }
 
-
 fn resync_open_tabs(state: &mut AppState) {
     use crate::state::tabs::RequestTabState;
     for tab in &mut state.tabs.tabs {
-        let Some((col_id, req_id)) = tab.saved_as.clone() else { continue };
+        let Some((col_id, req_id)) = tab.saved_as.clone() else {
+            continue;
+        };
         let restored = state
             .requests
             .get(&col_id)
@@ -552,7 +595,9 @@ fn apply_sync(state: &mut AppState, collections: Vec<ImportedCollection>) {
 /// as `apply_sync` only ever adds/updates collections rather than wiping
 /// ones a different repo owns.
 fn apply_global_script(state: &mut AppState, global_script: Option<(String, String)>) {
-    let Some((pre_request, test)) = global_script else { return };
+    let Some((pre_request, test)) = global_script else {
+        return;
+    };
     state.global_pre_request_editor = iced::widget::text_editor::Content::with_text(&pre_request);
     state.global_test_editor = iced::widget::text_editor::Content::with_text(&test);
 }
@@ -573,7 +618,11 @@ mod restore_tests {
 
     #[test]
     fn real_repo_owns_only_its_tracked_ids() {
-        let repos = vec![repo(repos::LOCAL_ID, &[]), repo("r1", &["a", "b"]), repo("r2", &["c"])];
+        let repos = vec![
+            repo(repos::LOCAL_ID, &[]),
+            repo("r1", &["a", "b"]),
+            repo("r2", &["c"]),
+        ];
         let all = vec!["a".into(), "b".into(), "c".into(), "local".into()];
         // A restore on r1 must never reach c (r2) or local — only a, b are deletable.
         assert_eq!(owned_ids(&repos, &all, "r1"), vec!["a", "b"]);
@@ -583,6 +632,9 @@ mod restore_tests {
     fn local_owns_everything_unclaimed() {
         let repos = vec![repo(repos::LOCAL_ID, &[]), repo("r1", &["a", "b"])];
         let all = vec!["a".into(), "b".into(), "local1".into(), "local2".into()];
-        assert_eq!(owned_ids(&repos, &all, repos::LOCAL_ID), vec!["local1", "local2"]);
+        assert_eq!(
+            owned_ids(&repos, &all, repos::LOCAL_ID),
+            vec!["local1", "local2"]
+        );
     }
 }

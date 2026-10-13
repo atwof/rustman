@@ -1,12 +1,16 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text},
     Element, Length,
+    widget::{button, column, container, row, scrollable, text},
 };
 
 use crate::{
     app::AppState,
     message::{Message, SidebarMsg},
-    ui::{theme::{Palette, TEXT_LG, TEXT_SM}, tree_label::tree_label, widgets::kv_table},
+    ui::{
+        theme::{Palette, TEXT_LG, TEXT_SM},
+        tree_label::tree_label,
+        widgets::kv_table,
+    },
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
@@ -17,7 +21,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let header = container(
         row![
-            text("History").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+            text("History")
+                .size(TEXT_LG)
+                .color(Palette::text())
+                .font(crate::ui::theme::UI_FONT_MEDIUM),
             iced::widget::Space::new().width(Length::Fill),
             clear_btn,
         ]
@@ -47,7 +54,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let item = button(
             column![
                 row![
-                    text(&entry.method).size(10).color(method_color).font(crate::ui::theme::MONO),
+                    text(&entry.method)
+                        .size(10)
+                        .color(method_color)
+                        .font(crate::ui::theme::MONO),
                     // Long URLs clip to one line (see ui::tree_label); the
                     // full URL pops up on hover only on clear overflow.
                     tree_label(entry.url.clone(), 12.0, state.sidebar_width - 70.0),
@@ -65,20 +75,34 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             ]
             .spacing(3),
         )
-        .on_press(Message::Sidebar(SidebarMsg::HistoryEntryOpened(entry.clone())))
+        .on_press(Message::Sidebar(SidebarMsg::HistoryEntryOpened(
+            entry.clone(),
+        )))
         .style(|_t, status| {
             let hovered = matches!(status, iced::widget::button::Status::Hovered);
             iced::widget::button::Style {
-                background: if hovered { Some(iced::Background::Color(Palette::hover())) } else { None },
+                background: if hovered {
+                    Some(iced::Background::Color(Palette::hover()))
+                } else {
+                    None
+                },
                 text_color: Palette::text(),
-                border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         })
         .width(Length::Fill)
         .padding([6, 8]);
 
-        col = col.push(container(item).padding(iced::Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 }));
+        col = col.push(container(item).padding(iced::Padding {
+            top: 0.0,
+            right: 6.0,
+            bottom: 0.0,
+            left: 6.0,
+        }));
     }
 
     scrollable(col)
@@ -94,7 +118,10 @@ fn status_dot(color: iced::Color) -> Element<'static, Message> {
     container(iced::widget::Space::new().width(6).height(6))
         .style(move |_| container::Style {
             background: Some(iced::Background::Color(color)),
-            border: iced::Border { radius: 3.0.into(), ..Default::default() },
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into()

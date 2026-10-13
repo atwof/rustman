@@ -39,7 +39,10 @@ pub enum Effect {
     /// Replaces the outgoing request body (pre-request scripts only —
     /// produced by `set_body(...)`).
     SetBody(String),
-    Test { name: String, passed: bool },
+    Test {
+        name: String,
+        passed: bool,
+    },
     /// A `print(...)` call, for debugging a script without an assertion.
     Log(String),
 }
@@ -72,14 +75,20 @@ impl Interpreter {
                 ]),
             );
         }
-        Self { vars, input, effects: Vec::new() }
+        Self {
+            vars,
+            input,
+            effects: Vec::new(),
+        }
     }
 
     pub(crate) fn run(&mut self, program: &[Stmt]) -> Result<RunOutcome, RuntimeError> {
         for stmt in program {
             self.exec(stmt)?;
         }
-        Ok(RunOutcome { effects: std::mem::take(&mut self.effects) })
+        Ok(RunOutcome {
+            effects: std::mem::take(&mut self.effects),
+        })
     }
 
     fn exec(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
@@ -88,7 +97,11 @@ impl Interpreter {
                 let v = self.eval(value)?;
                 self.vars.insert(name.clone(), v);
             }
-            Stmt::If { cond, then_branch, else_branch } => {
+            Stmt::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
                 if self.eval(cond)?.is_truthy() {
                     for s in then_branch {
                         self.exec(s)?;
@@ -195,7 +208,9 @@ impl Interpreter {
                 let recv = self.eval(receiver)?;
                 call_method(&recv, method, &arg_values)
             }
-            _ => Err(RuntimeError { message: "expression is not callable".to_owned() }),
+            _ => Err(RuntimeError {
+                message: "expression is not callable".to_owned(),
+            }),
         }
     }
 
@@ -220,10 +235,16 @@ impl Interpreter {
             }
             "header" => {
                 let key = expect_string(&args, 0, "header")?;
-                Ok(Value::String(lookup_ci(&self.input.headers, key).unwrap_or_default()))
+                Ok(Value::String(
+                    lookup_ci(&self.input.headers, key).unwrap_or_default(),
+                ))
             }
             "headers" => Ok(Value::Object(
-                self.input.headers.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect(),
+                self.input
+                    .headers
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                    .collect(),
             )),
             "set_header" => {
                 let key = expect_string(&args, 0, "set_header")?.to_owned();
@@ -233,7 +254,9 @@ impl Interpreter {
             }
             "cookie" => {
                 let key = expect_string(&args, 0, "cookie")?;
-                Ok(Value::String(lookup_ci(&self.input.cookies, key).unwrap_or_default()))
+                Ok(Value::String(
+                    lookup_ci(&self.input.cookies, key).unwrap_or_default(),
+                ))
             }
             "body" => Ok(Value::String(self.input.body.clone())),
             "set_body" => {
@@ -270,9 +293,9 @@ impl Interpreter {
                 Ok(builtins::json_parse(s))
             }
             "json_stringify" => {
-                let v = args
-                    .first()
-                    .ok_or_else(|| RuntimeError { message: "json_stringify() expects 1 argument".to_owned() })?;
+                let v = args.first().ok_or_else(|| RuntimeError {
+                    message: "json_stringify() expects 1 argument".to_owned(),
+                })?;
                 Ok(Value::String(builtins::json_stringify(v)))
             }
             "aes_encrypt" => {
@@ -290,7 +313,9 @@ impl Interpreter {
                 let needle = expect_any(&args, 1, "contains")?;
                 Ok(Value::Bool(value_contains(haystack, needle)))
             }
-            other => Err(RuntimeError { message: format!("unknown function '{other}'") }),
+            other => Err(RuntimeError {
+                message: format!("unknown function '{other}'"),
+            }),
         }
     }
 }
@@ -319,7 +344,9 @@ fn call_method(receiver: &Value, method: &str, args: &[Value]) -> Result<Value, 
                 }),
             }
         }
-        other => Err(RuntimeError { message: format!("unknown method '.{other}()'") }),
+        other => Err(RuntimeError {
+            message: format!("unknown method '.{other}()'"),
+        }),
     }
 }
 
@@ -370,18 +397,29 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     }
 }
 
-fn expect_string<'a>(args: &'a [Value], index: usize, fn_name: &str) -> Result<&'a str, RuntimeError> {
+fn expect_string<'a>(
+    args: &'a [Value],
+    index: usize,
+    fn_name: &str,
+) -> Result<&'a str, RuntimeError> {
     args.get(index)
         .and_then(Value::as_str)
         .ok_or_else(|| RuntimeError {
-            message: format!("{fn_name}() expects a string argument at position {}", index + 1),
+            message: format!(
+                "{fn_name}() expects a string argument at position {}",
+                index + 1
+            ),
         })
 }
 
 /// For arguments where every type is meaningful and none needs converting —
 /// `contains`, whose answer depends on whether it was handed a string, an
 /// array or an object. Only presence is checked.
-fn expect_any<'a>(args: &'a [Value], index: usize, fn_name: &str) -> Result<&'a Value, RuntimeError> {
+fn expect_any<'a>(
+    args: &'a [Value],
+    index: usize,
+    fn_name: &str,
+) -> Result<&'a Value, RuntimeError> {
     args.get(index).ok_or_else(|| RuntimeError {
         message: format!("{fn_name}() expects an argument at position {}", index + 1),
     })

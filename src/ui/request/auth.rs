@@ -1,10 +1,16 @@
 use iced::{
-    widget::{button, column, pick_list, row, text, text_input},
     Element, Length,
+    widget::{button, column, pick_list, row, text, text_input},
 };
 
 use crate::{
-    domain::request::AuthType, message::{Message, RequestMsg}, state::tabs::RequestTabState, ui::{icons::{eye, eye_closed}, styles},
+    domain::request::AuthType,
+    message::{Message, RequestMsg},
+    state::tabs::RequestTabState,
+    ui::{
+        icons::{eye, eye_closed},
+        styles,
+    },
 };
 
 const AUTH_TYPES: &[&str] = &["none", "bearer", "basic", "apikey", "jwt-user", "cookie"];
@@ -12,11 +18,9 @@ const AUTH_TYPES: &[&str] = &["none", "bearer", "basic", "apikey", "jwt-user", "
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let type_picker = row![
         text("Auth type").size(12).width(80),
-        pick_list(
-            AUTH_TYPES,
-            Some(tab.auth_type.as_str()),
-            |s| Message::Request(RequestMsg::AuthTypeChanged(s.to_owned()))
-        )
+        pick_list(AUTH_TYPES, Some(tab.auth_type.as_str()), |s| {
+            Message::Request(RequestMsg::AuthTypeChanged(s.to_owned()))
+        })
         .text_size(12)
         .style(styles::pick_list)
         .width(140),
@@ -26,17 +30,19 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     .padding([8, 12]);
 
     let fields: Element<Message> = match &tab.auth_type {
-        AuthType::Bearer => column![
-            labeled_input("Token", &tab.bearer_token, |s| {
-                Message::Request(RequestMsg::BearerTokenChanged(s))
-            }),
-        ]
+        AuthType::Bearer => column![labeled_input("Token", &tab.bearer_token, |s| {
+            Message::Request(RequestMsg::BearerTokenChanged(s))
+        }),]
         .spacing(6)
         .padding([4, 12])
         .into(),
 
         AuthType::Basic => {
-            let eye_icon = if tab.show_basic_pass { eye_closed() } else { eye() };
+            let eye_icon = if tab.show_basic_pass {
+                eye_closed()
+            } else {
+                eye()
+            };
 
             column![
                 labeled_input("Username", &tab.basic_user, |s| {
@@ -47,8 +53,10 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                         Message::Request(RequestMsg::BasicPassChanged(s))
                     }),
                     button(eye_icon)
-                        .on_press_maybe((!tab.basic_pass.is_empty())
-                            .then_some(Message::Request(RequestMsg::ToggleBasicPassVisibility)))
+                        .on_press_maybe(
+                            (!tab.basic_pass.is_empty())
+                                .then_some(Message::Request(RequestMsg::ToggleBasicPassVisibility))
+                        )
                         .style(iced::widget::button::text)
                         .padding(4),
                 ]
@@ -85,11 +93,9 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .padding([4, 12])
         .into(),
 
-        AuthType::Cookie => column![
-            labeled_input("Cookie string", &tab.cookie_string, |s| {
-                Message::Request(RequestMsg::CookieStringChanged(s))
-            }),
-        ]
+        AuthType::Cookie => column![labeled_input("Cookie string", &tab.cookie_string, |s| {
+            Message::Request(RequestMsg::CookieStringChanged(s))
+        }),]
         .spacing(6)
         .padding([4, 12])
         .into(),
@@ -103,11 +109,9 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             }),
             row![
                 text("Algorithm").size(12).width(80),
-                pick_list(
-                    &["HS256"][..],
-                    Some(tab.jwt_algo.as_str()),
-                    |s| Message::Request(RequestMsg::JwtAlgoChanged(s.to_owned()))
-                )
+                pick_list(&["HS256"][..], Some(tab.jwt_algo.as_str()), |s| {
+                    Message::Request(RequestMsg::JwtAlgoChanged(s.to_owned()))
+                })
                 .text_size(12)
                 .style(styles::pick_list)
                 .width(100),
@@ -116,7 +120,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             .align_y(iced::Alignment::Center),
             row![
                 iced::widget::Space::new().width(80),
-                text("Token is generated per-request (exp = now + 1h)").size(10)
+                text("Token is generated per-request (exp = now + 1h)")
+                    .size(10)
                     .color(crate::ui::theme::Palette::text_subtle()),
             ]
             .spacing(8),
@@ -125,9 +130,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .padding([4, 12])
         .into(),
 
-        AuthType::None => {
-            iced::widget::Space::new().into()
-        }
+        AuthType::None => iced::widget::Space::new().into(),
     };
 
     column![type_picker, fields].spacing(0).into()

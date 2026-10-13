@@ -17,6 +17,12 @@ Rustman is free and open source and it is going to stay that way.
 - No telemetry, no analytics, nothing phones home.
 - Your collections, history, and environments live on your machine and nowhere else.
 
+The app makes zero automatic network calls. The only update traffic that
+can ever happen is the GitHub releases check, which is off by default —
+turn it on in Settings → Updates ("Check for updates on launch"), or use
+the manual Check button any time. Everything else is strictly on-demand:
+your requests, plus anything you explicitly sync or download.
+
 This is not a startup and I am not trying to sell you anything. It is a tool I wanted for myself, so I built it and put it out for everyone.
 
 ---

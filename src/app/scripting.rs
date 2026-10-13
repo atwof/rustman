@@ -47,14 +47,21 @@ pub(crate) fn test_host_input(
         env_vars: env_pairs(active_env),
         // Response headers, not request headers — a test script inspects
         // what came back, same convention Postman's `pm.response` uses.
-        headers: resp.headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        headers: resp
+            .headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
         cookies: cookie_pairs(tab),
         // Unlike headers(), body()/url() always describe the request that
         // was actually sent, in both script slots — debugging "what did I
         // just send" is a normal thing to want from inside a test script.
         body: tab.body_editor.content(),
         url: tab.url.clone(),
-        response: Some(ResponseInput { status: resp.status, body: resp.body.clone() }),
+        response: Some(ResponseInput {
+            status: resp.status,
+            body: resp.body.clone(),
+        }),
     }
 }
 
@@ -92,7 +99,12 @@ pub(crate) fn apply_effects(state: &mut AppState, effects: Vec<Effect>) -> Appli
         let _ = crate::services::storage::save_environment(db, env);
     }
 
-    AppliedEffects { extra_headers, test_results, body_override, logs }
+    AppliedEffects {
+        extra_headers,
+        test_results,
+        body_override,
+        logs,
+    }
 }
 
 /// Runs `script_text` (a no-op returning empty effects if blank) against
@@ -116,7 +128,12 @@ pub(crate) fn run_and_apply(
 
 fn env_pairs(active_env: Option<&AppEnvironment>) -> Vec<(String, String)> {
     active_env
-        .map(|e| e.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .map(|e| {
+            e.variables
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -164,13 +181,21 @@ mod tests {
         AppEnvironment {
             id: "env-1".into(),
             name: "Test".into(),
-            variables: vars.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            variables: vars
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             is_active: true,
         }
     }
 
     fn kv(key: &str, value: &str, enabled: bool) -> KeyValue {
-        KeyValue { id: uuid::Uuid::new_v4().to_string(), key: key.into(), value: value.into(), enabled }
+        KeyValue {
+            id: uuid::Uuid::new_v4().to_string(),
+            key: key.into(),
+            value: value.into(),
+            enabled,
+        }
     }
 
     #[test]
@@ -208,12 +233,21 @@ mod tests {
         // any name in it was silently invisible to scripts.
         let mut tab = RequestTabState::new();
         tab.cookie_string =
-            "sessionToken=16a2233f; accessToken=eyJhbGci.abc.def; planName=BFHL Health Prime".to_owned();
+            "sessionToken=16a2233f; accessToken=eyJhbGci.abc.def; planName=BFHL Health Prime"
+                .to_owned();
 
         let input = pre_request_host_input(&tab, None);
 
-        assert!(input.cookies.contains(&("accessToken".to_string(), "eyJhbGci.abc.def".to_string())));
-        assert!(input.cookies.contains(&("sessionToken".to_string(), "16a2233f".to_string())));
+        assert!(
+            input
+                .cookies
+                .contains(&("accessToken".to_string(), "eyJhbGci.abc.def".to_string()))
+        );
+        assert!(
+            input
+                .cookies
+                .contains(&("sessionToken".to_string(), "16a2233f".to_string()))
+        );
     }
 
     #[test]
@@ -224,8 +258,16 @@ mod tests {
 
         let input = pre_request_host_input(&tab, None);
 
-        assert!(input.cookies.contains(&("session_id".to_string(), "abc".to_string())));
-        assert!(input.cookies.contains(&("accessToken".to_string(), "xyz".to_string())));
+        assert!(
+            input
+                .cookies
+                .contains(&("session_id".to_string(), "abc".to_string()))
+        );
+        assert!(
+            input
+                .cookies
+                .contains(&("accessToken".to_string(), "xyz".to_string()))
+        );
     }
 
     #[test]
@@ -237,9 +279,18 @@ mod tests {
 
         let input = pre_request_host_input(&tab, Some(&e));
 
-        assert_eq!(input.env_vars, vec![("base_url".to_string(), "https://api.test".to_string())]);
-        assert_eq!(input.headers, vec![("Accept".to_string(), "json".to_string())]);
-        assert_eq!(input.cookies, vec![("session".to_string(), "abc".to_string())]);
+        assert_eq!(
+            input.env_vars,
+            vec![("base_url".to_string(), "https://api.test".to_string())]
+        );
+        assert_eq!(
+            input.headers,
+            vec![("Accept".to_string(), "json".to_string())]
+        );
+        assert_eq!(
+            input.cookies,
+            vec![("session".to_string(), "abc".to_string())]
+        );
         assert!(input.response.is_none());
     }
 
@@ -307,7 +358,10 @@ mod tests {
 
         let input = test_host_input(&tab, None, &resp);
 
-        assert_eq!(input.headers, vec![("Content-Type".to_string(), "application/json".to_string())]);
+        assert_eq!(
+            input.headers,
+            vec![("Content-Type".to_string(), "application/json".to_string())]
+        );
         let response = input.response.expect("response input should be set");
         assert_eq!(response.status, 200);
         assert_eq!(response.body, "{\"ok\":true}");
