@@ -1,10 +1,10 @@
 pub mod command_palette;
 pub mod icons;
 pub mod layout;
-pub mod styles;
 pub mod request;
 pub mod response;
 pub mod sidebar;
+pub mod styles;
 pub mod theme;
 pub mod tree_label;
 pub mod update_banner;

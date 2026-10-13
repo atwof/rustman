@@ -1,26 +1,33 @@
 use iced::{
-    widget::{container, row, text, Space},
     Alignment, Background, Border, Element, Length,
+    widget::{Space, container, row, text},
 };
 
 use crate::{
     app::AppState,
     message::Message,
-    ui::{icons, theme::{Palette, MONO, TEXT_XS}},
+    ui::{
+        icons,
+        theme::{MONO, Palette, TEXT_XS},
+    },
 };
 
 pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
     let env_el: Element<Message> = match state.environments.iter().find(|e| e.is_active) {
         Some(e) => row![
             icons::globe().size(11).color(Palette::accent()),
-            text(e.name.as_str()).size(TEXT_XS).color(Palette::text_muted()),
+            text(e.name.as_str())
+                .size(TEXT_XS)
+                .color(Palette::text_muted()),
         ]
         .spacing(5)
         .align_y(Alignment::Center)
         .into(),
         None => row![
             icons::globe().size(11).color(Palette::text_subtle()),
-            text("No environment").size(TEXT_XS).color(Palette::text_subtle()),
+            text("No environment")
+                .size(TEXT_XS)
+                .color(Palette::text_subtle()),
         ]
         .spacing(5)
         .align_y(Alignment::Center)
@@ -40,7 +47,10 @@ pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
             env_el,
             separator(),
             row![
-                text("Ctrl+P").size(TEXT_XS).color(Palette::text_subtle()).font(MONO),
+                text("Ctrl+P")
+                    .size(TEXT_XS)
+                    .color(Palette::text_subtle())
+                    .font(MONO),
                 text("Command").size(TEXT_XS).color(Palette::text_subtle()),
             ]
             .spacing(5)
@@ -52,7 +62,11 @@ pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
     )
     .style(|_| iced::widget::container::Style {
         background: Some(Background::Color(Palette::chrome())),
-        border: Border { color: Palette::border_subtle(), width: 1.0, radius: 0.0.into() },
+        border: Border {
+            color: Palette::border_subtle(),
+            width: 1.0,
+            radius: 0.0.into(),
+        },
         ..Default::default()
     })
     .height(28)

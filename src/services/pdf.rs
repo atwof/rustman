@@ -24,7 +24,9 @@ pub struct RenderedPage {
 /// Returns the number of pages in the PDF.
 pub fn page_count(bytes: &[u8]) -> Result<usize, String> {
     let pdfium = pdfium()?;
-    let document = pdfium.load_pdf_from_byte_slice(bytes, None).map_err(|e| e.to_string())?;
+    let document = pdfium
+        .load_pdf_from_byte_slice(bytes, None)
+        .map_err(|e| e.to_string())?;
     Ok(document.pages().len() as usize)
 }
 
@@ -36,7 +38,9 @@ pub fn render_page(
     target_width: i32,
 ) -> Result<RenderedPage, String> {
     let pdfium = pdfium()?;
-    let document = pdfium.load_pdf_from_byte_slice(bytes, None).map_err(|e| e.to_string())?;
+    let document = pdfium
+        .load_pdf_from_byte_slice(bytes, None)
+        .map_err(|e| e.to_string())?;
     let page = document
         .pages()
         .get(page_index as i32)
@@ -51,7 +55,11 @@ pub fn render_page(
     let image = bitmap.as_image().map_err(|e| e.to_string())?.into_rgba8();
     let (width, height) = image.dimensions();
 
-    Ok(RenderedPage { width, height, rgba: image.into_raw() })
+    Ok(RenderedPage {
+        width,
+        height,
+        rgba: image.into_raw(),
+    })
 }
 
 #[cfg(test)]

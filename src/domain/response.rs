@@ -58,8 +58,9 @@ impl HttpResponse {
 
     /// Whether this (non-binary) response's Content-Type is HTML.
     pub fn is_html(&self) -> bool {
-        self.headers
-            .iter()
-            .any(|(name, value)| name.eq_ignore_ascii_case("content-type") && value.to_ascii_lowercase().contains("text/html"))
+        self.headers.iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("content-type")
+                && value.to_ascii_lowercase().contains("text/html")
+        })
     }
 }

@@ -24,6 +24,7 @@ pub(crate) fn persist_session(state: &mut AppState) {
         tls_http1_only: state.tls_options.http1_only,
         tls_force_tls12: state.tls_options.force_tls12,
         tls_force_tls13: state.tls_options.force_tls13,
+        auto_check_updates: state.auto_check_updates,
     };
     let _ = storage::save_session(db, &session);
 }

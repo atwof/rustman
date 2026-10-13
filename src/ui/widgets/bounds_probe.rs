@@ -6,8 +6,8 @@
 //! layout math by hand, which would drift out of sync the moment the layout
 //! changes.
 
-use iced::advanced::widget::{operation::Outcome, Id, Operation};
 use iced::Rectangle;
+use iced::advanced::widget::{Id, Operation, operation::Outcome};
 
 pub struct FindBounds {
     target: Id,
@@ -16,7 +16,10 @@ pub struct FindBounds {
 
 impl FindBounds {
     pub fn new(target: Id) -> Self {
-        Self { target, found: None }
+        Self {
+            target,
+            found: None,
+        }
     }
 }
 

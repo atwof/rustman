@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, mouse_area, row, scrollable, text, text_input, Space},
     Background, Border, Color, Element, Length,
+    widget::{Space, button, column, container, mouse_area, row, scrollable, text, text_input},
 };
 
 use crate::{
@@ -8,17 +8,37 @@ use crate::{
     domain::collection::SavedRequest,
     domain::group::Group,
     message::{ImportMsg, Message, SidebarMsg},
-    ui::{icons, theme::{Palette, TEXT_LG}, tree_label::tree_label, widgets::kv_table},
+    ui::{
+        icons,
+        theme::{Palette, TEXT_LG},
+        tree_label::tree_label,
+        widgets::kv_table,
+    },
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
-            text("Collections").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+            text("Collections")
+                .size(TEXT_LG)
+                .color(Palette::text())
+                .font(crate::ui::theme::UI_FONT_MEDIUM),
             Space::new().width(Length::Fill),
-            icon_btn_only(icons::import(), "Import Postman / OpenAPI / HTTPie / JSON", Message::Import(ImportMsg::OpenPostmanDialog)),
-            icon_btn_only(icons::export(), "Export all collections (Rustman JSON)", Message::Import(ImportMsg::ExportAllCollections)),
-            icon_btn_only(icons::plus(), "New Collection", Message::Sidebar(SidebarMsg::NewCollection)),
+            icon_btn_only(
+                icons::import(),
+                "Import Postman / OpenAPI / HTTPie / JSON",
+                Message::Import(ImportMsg::OpenPostmanDialog)
+            ),
+            icon_btn_only(
+                icons::export(),
+                "Export all collections (Rustman JSON)",
+                Message::Import(ImportMsg::ExportAllCollections)
+            ),
+            icon_btn_only(
+                icons::plus(),
+                "New Collection",
+                Message::Sidebar(SidebarMsg::NewCollection)
+            ),
         ]
         .align_y(iced::Alignment::Center)
         .spacing(2)
@@ -26,11 +46,19 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)].spacing(0);
+    let mut col = column![
+        action_bar,
+        iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)
+    ]
+    .spacing(0);
 
     for collection in &state.collections {
         let is_expanded = state.sidebar.expanded.contains(&collection.id);
-        let arrow = if is_expanded { icons::chevron_down() } else { icons::chevron_right() };
+        let arrow = if is_expanded {
+            icons::chevron_down()
+        } else {
+            icons::chevron_right()
+        };
 
         let renaming = state.sidebar.col_renaming.as_deref() == Some(collection.id.as_str());
         let dragging = state.sidebar.dragging_item.as_deref() == Some(collection.id.as_str());
@@ -42,9 +70,14 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             text_input("Collection name", &collection.name)
                 .id(crate::state::sidebar::collection_rename_input_id(&rid))
                 .on_input(move |s| {
-                    Message::Sidebar(SidebarMsg::RenameCollection { id: rid.clone(), name: s })
+                    Message::Sidebar(SidebarMsg::RenameCollection {
+                        id: rid.clone(),
+                        name: s,
+                    })
                 })
-                .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameCollection(rid_done)))
+                .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameCollection(
+                    rid_done,
+                )))
                 .size(12)
                 .padding([4, 8])
                 .width(Length::Fill)
@@ -81,21 +114,31 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             )
             // Right-click opens the collection menu (rename/export/delete);
             // double-click renames in place (see ItemDragStart).
-            .on_enter(Message::Sidebar(SidebarMsg::ItemDragOver(collection.id.clone())))
-            .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(collection.id.clone())))
+            .on_enter(Message::Sidebar(SidebarMsg::ItemDragOver(
+                collection.id.clone(),
+            )))
+            .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(
+                collection.id.clone(),
+            )))
             .into()
         };
 
         let header = row![
             name_part,
-            hover_icon_btn(icons::folder_plus().size(10), Message::Sidebar(SidebarMsg::NewGroupIn {
-                parent_id: collection.id.clone(),
-                parent_is_collection: true,
-            })),
-            hover_icon_btn(icons::plus().size(10), Message::Sidebar(SidebarMsg::NewRequestIn {
-                parent_id: collection.id.clone(),
-                parent_is_collection: true,
-            })),
+            hover_icon_btn(
+                icons::folder_plus().size(10),
+                Message::Sidebar(SidebarMsg::NewGroupIn {
+                    parent_id: collection.id.clone(),
+                    parent_is_collection: true,
+                })
+            ),
+            hover_icon_btn(
+                icons::plus().size(10),
+                Message::Sidebar(SidebarMsg::NewRequestIn {
+                    parent_id: collection.id.clone(),
+                    parent_is_collection: true,
+                })
+            ),
         ]
         .align_y(iced::Alignment::Center)
         .width(Length::Fill);
@@ -109,7 +152,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         if is_expanded {
             let (groups, requests) = children_of(state, &collection.id, true);
             if groups.is_empty() && requests.is_empty() {
-                col = col.push(empty_state("No requests. Click + to add a folder or request.", 1));
+                col = col.push(empty_state(
+                    "No requests. Click + to add a folder or request.",
+                    1,
+                ));
             }
             col = render_children(state, col, groups, requests, 1);
         }
@@ -117,20 +163,24 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     if state.collections.is_empty() {
         return col
-            .push(kv_table::empty_state("No collections yet.\nClick + New to create one."))
+            .push(kv_table::empty_state(
+                "No collections yet.\nClick + New to create one.",
+            ))
             .height(Length::Fill)
             .into();
     }
 
     // Releasing the mouse anywhere over the tree ends any running drag.
-    mouse_area(scrollable(col)
-        .height(Length::Fill)
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            crate::ui::theme::grabbable_scrollbar(),
-        ))
-        .style(crate::ui::theme::thin_scrollbar))
-        .on_release(Message::Sidebar(SidebarMsg::ItemDragEnd))
-        .into()
+    mouse_area(
+        scrollable(col)
+            .height(Length::Fill)
+            .direction(iced::widget::scrollable::Direction::Vertical(
+                crate::ui::theme::grabbable_scrollbar(),
+            ))
+            .style(crate::ui::theme::thin_scrollbar),
+    )
+    .on_release(Message::Sidebar(SidebarMsg::ItemDragEnd))
+    .into()
 }
 
 /// Render a parent's children: sorted folders first, then sorted requests.
@@ -183,7 +233,11 @@ fn children_of<'a>(
 
 fn group_view<'a>(state: &'a AppState, group: &'a Group, depth: usize) -> Element<'a, Message> {
     let is_expanded = state.sidebar.expanded.contains(&group.id);
-    let arrow = if is_expanded { icons::chevron_down() } else { icons::chevron_right() };
+    let arrow = if is_expanded {
+        icons::chevron_down()
+    } else {
+        icons::chevron_right()
+    };
 
     let renaming = state.sidebar.group_renaming.as_deref() == Some(group.id.as_str());
     let dragging = state.sidebar.dragging_item.as_deref() == Some(group.id.as_str());
@@ -195,7 +249,12 @@ fn group_view<'a>(state: &'a AppState, group: &'a Group, depth: usize) -> Elemen
         let gid_done = group.id.clone();
         text_input("Folder name", &group.name)
             .id(crate::state::sidebar::group_rename_input_id(&gid))
-            .on_input(move |s| Message::Sidebar(SidebarMsg::RenameGroup { id: gid.clone(), name: s }))
+            .on_input(move |s| {
+                Message::Sidebar(SidebarMsg::RenameGroup {
+                    id: gid.clone(),
+                    name: s,
+                })
+            })
             .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameGroup(gid_done)))
             .size(12)
             .padding([4, 8])
@@ -208,7 +267,11 @@ fn group_view<'a>(state: &'a AppState, group: &'a Group, depth: usize) -> Elemen
                 row![
                     arrow.size(10).color(Palette::text_muted()),
                     icons::folder().size(12).color(Palette::text_muted()),
-                    tree_label(group.name.clone(), 12.0, state.sidebar_width - pad_left - 72.0),
+                    tree_label(
+                        group.name.clone(),
+                        12.0,
+                        state.sidebar_width - pad_left - 72.0
+                    ),
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
@@ -227,20 +290,28 @@ fn group_view<'a>(state: &'a AppState, group: &'a Group, depth: usize) -> Elemen
             .padding([5, 8]),
         )
         .on_enter(Message::Sidebar(SidebarMsg::ItemDragOver(group.id.clone())))
-        .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(group.id.clone())))
+        .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(
+            group.id.clone(),
+        )))
         .into()
     };
 
     let header = row![
         name_part,
-        hover_icon_btn(icons::folder_plus().size(10), Message::Sidebar(SidebarMsg::NewGroupIn {
-            parent_id: group.id.clone(),
-            parent_is_collection: false,
-        })),
-        hover_icon_btn(icons::plus().size(10), Message::Sidebar(SidebarMsg::NewRequestIn {
-            parent_id: group.id.clone(),
-            parent_is_collection: false,
-        })),
+        hover_icon_btn(
+            icons::folder_plus().size(10),
+            Message::Sidebar(SidebarMsg::NewGroupIn {
+                parent_id: group.id.clone(),
+                parent_is_collection: false,
+            })
+        ),
+        hover_icon_btn(
+            icons::plus().size(10),
+            Message::Sidebar(SidebarMsg::NewRequestIn {
+                parent_id: group.id.clone(),
+                parent_is_collection: false,
+            })
+        ),
     ]
     .align_y(iced::Alignment::Center)
     .width(Length::Fill);
@@ -261,12 +332,21 @@ fn group_view<'a>(state: &'a AppState, group: &'a Group, depth: usize) -> Elemen
     }
 
     container(col)
-        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: pad_left })
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: pad_left,
+        })
         .width(Length::Fill)
         .into()
 }
 
-fn request_view<'a>(state: &'a AppState, req: &'a SavedRequest, depth: usize) -> Element<'a, Message> {
+fn request_view<'a>(
+    state: &'a AppState,
+    req: &'a SavedRequest,
+    depth: usize,
+) -> Element<'a, Message> {
     let is_selected = state.sidebar.selected_request.as_deref() == Some(req.id.as_str());
     let dragging = state.sidebar.dragging_item.as_deref() == Some(req.id.as_str());
     let method_color = method_color(req.method.as_str());
@@ -289,7 +369,12 @@ fn request_view<'a>(state: &'a AppState, req: &'a SavedRequest, depth: usize) ->
             })
             .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameRequest(rid_done)))
             .size(12)
-            .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 8.0 })
+            .padding(iced::Padding {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 8.0,
+            })
             .width(Length::Fill)
             .into()
     } else {
@@ -306,7 +391,11 @@ fn request_view<'a>(state: &'a AppState, req: &'a SavedRequest, depth: usize) ->
                     .width(32),
                     // Label space: content width minus indent, method badge,
                     // clone button and padding (~68px chrome).
-                    tree_label(req.name.clone(), 12.0, state.sidebar_width - pad_left - 68.0),
+                    tree_label(
+                        req.name.clone(),
+                        12.0,
+                        state.sidebar_width - pad_left - 68.0
+                    ),
                 ]
                 .spacing(4)
                 .align_y(iced::Alignment::Center),
@@ -314,10 +403,17 @@ fn request_view<'a>(state: &'a AppState, req: &'a SavedRequest, depth: usize) ->
             .on_press(Message::Sidebar(SidebarMsg::ItemDragStart(rid)))
             .style(move |t, s| req_item_style(t, s, is_selected))
             .width(Length::Fill)
-            .padding(iced::Padding { top: 5.0, right: 4.0, bottom: 5.0, left: 8.0 }),
+            .padding(iced::Padding {
+                top: 5.0,
+                right: 4.0,
+                bottom: 5.0,
+                left: 8.0,
+            }),
         )
         .on_enter(Message::Sidebar(SidebarMsg::ItemDragOver(req.id.clone())))
-        .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(req.id.clone())))
+        .on_right_press(Message::Sidebar(SidebarMsg::ContextMenuOpened(
+            req.id.clone(),
+        )))
         .into()
     };
 
@@ -335,35 +431,42 @@ fn request_view<'a>(state: &'a AppState, req: &'a SavedRequest, depth: usize) ->
         .align_y(iced::Alignment::Center)
         .width(Length::Fill),
     )
-    .style(move |_| {
-        iced::widget::container::Style {
-            background: if is_selected {
-                Some(Background::Color(Palette::accent_soft()))
-            } else if dragging {
-                Some(Background::Color(Palette::hover()))
+    .style(move |_| iced::widget::container::Style {
+        background: if is_selected {
+            Some(Background::Color(Palette::accent_soft()))
+        } else if dragging {
+            Some(Background::Color(Palette::hover()))
+        } else {
+            None
+        },
+        border: Border {
+            color: if is_selected {
+                Color {
+                    a: 0.35,
+                    ..Palette::accent()
+                }
             } else {
-                None
+                Color::TRANSPARENT
             },
-            border: Border {
-                color: if is_selected { Color { a: 0.35, ..Palette::accent() } } else { Color::TRANSPARENT },
-                width: if is_selected { 1.0 } else { 0.0 },
-                radius: 6.0.into(),
-            },
-            ..Default::default()
-        }
+            width: if is_selected { 1.0 } else { 0.0 },
+            radius: 6.0.into(),
+        },
+        ..Default::default()
     })
-    .padding(iced::Padding { top: 1.0, right: 6.0, bottom: 1.0, left: pad_left })
+    .padding(iced::Padding {
+        top: 1.0,
+        right: 6.0,
+        bottom: 1.0,
+        left: pad_left,
+    })
     .width(Length::Fill);
 
     let item_row: Element<Message> = item_row.into();
     if menu_open {
-        column![
-            item_row,
-            request_menu(req, pad_left + 16.0),
-        ]
-        .spacing(0)
-        .width(Length::Fill)
-        .into()
+        column![item_row, request_menu(req, pad_left + 16.0),]
+            .spacing(0)
+            .width(Length::Fill)
+            .into()
     } else {
         item_row
     }
@@ -389,9 +492,21 @@ fn collection_menu(col_id: &str) -> Element<'_, Message> {
     let del_id = col_id.to_owned();
     context_menu(
         vec![
-            menu_item("Rename", Message::Sidebar(SidebarMsg::ToggleRenameCollection(ren_id)), false),
-            menu_item("Export…", Message::Import(ImportMsg::OpenExportDialog(exp_id)), false),
-            menu_item("Delete", Message::Sidebar(SidebarMsg::DeleteCollection(del_id)), true),
+            menu_item(
+                "Rename",
+                Message::Sidebar(SidebarMsg::ToggleRenameCollection(ren_id)),
+                false,
+            ),
+            menu_item(
+                "Export…",
+                Message::Import(ImportMsg::OpenExportDialog(exp_id)),
+                false,
+            ),
+            menu_item(
+                "Delete",
+                Message::Sidebar(SidebarMsg::DeleteCollection(del_id)),
+                true,
+            ),
         ],
         24.0,
     )
@@ -408,7 +523,11 @@ fn group_menu(group_id: &str, indent: f32) -> Element<'_, Message> {
                 Message::Sidebar(SidebarMsg::ToggleRenameGroup(ren_id)),
                 false,
             ),
-            menu_item("Delete", Message::Sidebar(SidebarMsg::DeleteGroup(del_id)), true),
+            menu_item(
+                "Delete",
+                Message::Sidebar(SidebarMsg::DeleteGroup(del_id)),
+                true,
+            ),
         ],
         indent,
     )
@@ -429,7 +548,10 @@ fn request_menu(req: &SavedRequest, indent: f32) -> Element<'_, Message> {
             ),
             menu_item(
                 "Delete",
-                Message::Sidebar(SidebarMsg::DeleteRequest { id: del_id, collection_id: del_col }),
+                Message::Sidebar(SidebarMsg::DeleteRequest {
+                    id: del_id,
+                    collection_id: del_col,
+                }),
                 true,
             ),
         ],
@@ -443,30 +565,50 @@ fn context_menu(items: Vec<Element<'static, Message>>, indent: f32) -> Element<'
         container(column(items).spacing(1))
             .style(|_| iced::widget::container::Style {
                 background: Some(Background::Color(Palette::surface_raised())),
-                border: Border { color: Palette::border(), width: 1.0, radius: 8.0.into() },
+                border: Border {
+                    color: Palette::border(),
+                    width: 1.0,
+                    radius: 8.0.into(),
+                },
                 ..Default::default()
             })
             .padding(4)
             .width(Length::Fill),
     )
-    .padding(iced::Padding { top: 2.0, right: 8.0, bottom: 2.0, left: indent })
+    .padding(iced::Padding {
+        top: 2.0,
+        right: 8.0,
+        bottom: 2.0,
+        left: indent,
+    })
     .width(Length::Fill)
     .into()
 }
 
 fn menu_item(label: &'static str, msg: Message, danger: bool) -> Element<'static, Message> {
     button(
-        row![text(label).size(12).color(if danger { Palette::ERROR } else { Palette::text() })]
-            .width(Length::Fill),
+        row![text(label).size(12).color(if danger {
+            Palette::ERROR
+        } else {
+            Palette::text()
+        })]
+        .width(Length::Fill),
     )
     .on_press(msg)
     .style(move |_t, s| iced::widget::button::Style {
         background: if matches!(s, iced::widget::button::Status::Hovered) {
-            Some(Background::Color(if danger { Palette::error_soft() } else { Palette::hover() }))
+            Some(Background::Color(if danger {
+                Palette::error_soft()
+            } else {
+                Palette::hover()
+            }))
         } else {
             None
         },
-        border: Border { radius: 5.0.into(), ..Default::default() },
+        border: Border {
+            radius: 5.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .padding([6, 10])
@@ -475,7 +617,8 @@ fn menu_item(label: &'static str, msg: Message, danger: bool) -> Element<'static
 }
 
 /// Container style applied while an item is mid-drag (issue #53 reorder).
-fn dragging_style(dragging: bool) -> iced::widget::container::Style {    let mut style = iced::widget::container::Style::default();
+fn dragging_style(dragging: bool) -> iced::widget::container::Style {
+    let mut style = iced::widget::container::Style::default();
     if dragging {
         style.background = Some(Background::Color(Palette::hover()));
     }
@@ -493,7 +636,10 @@ fn method_color(method: &str) -> iced::Color {
     }
 }
 
-fn hover_icon_btn(icon: iced::widget::Text<'static>, msg: Message) -> iced::Element<'static, Message> {
+fn hover_icon_btn(
+    icon: iced::widget::Text<'static>,
+    msg: Message,
+) -> iced::Element<'static, Message> {
     button(icon)
         .on_press(msg)
         .style(|_t, s| iced::widget::button::Style {
@@ -508,7 +654,11 @@ fn hover_icon_btn(icon: iced::widget::Text<'static>, msg: Message) -> iced::Elem
         .into()
 }
 
-fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message) -> iced::Element<'static, Message> {
+fn icon_btn_only(
+    icon: iced::widget::Text<'static>,
+    _tooltip: &str,
+    msg: Message,
+) -> iced::Element<'static, Message> {
     button(icon.size(12).color(Palette::text_muted()))
         .on_press(msg)
         .style(|_t, s| iced::widget::button::Style {
@@ -517,7 +667,10 @@ fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message
             } else {
                 None
             },
-            border: Border { radius: 4.0.into(), ..Default::default() },
+            border: Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .padding([4, 5])

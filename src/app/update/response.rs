@@ -1,4 +1,4 @@
-use iced::{clipboard, Task};
+use iced::{Task, clipboard};
 
 use crate::app::AppState;
 use crate::jobs::JobKind;
@@ -24,7 +24,10 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
                 _ => {
                     let editor_text = tab.response_editor.content();
                     if editor_text.is_empty() {
-                        tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default()
+                        tab.response
+                            .as_ref()
+                            .map(|r| r.body.clone())
+                            .unwrap_or_default()
                     } else {
                         editor_text
                     }
@@ -57,7 +60,9 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
                 return Task::none();
             }
             let tab = state.tabs.active_tab_mut();
-            return tab.response_editor.update(&msg)
+            return tab
+                .response_editor
+                .update(&msg)
                 .map(|m| Message::Response(ResponseMsg::ViewerEdited(m)));
         }
         ResponseMsg::ViewerPagePrev => {

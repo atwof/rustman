@@ -1,7 +1,7 @@
 use iced::Task;
 
-use crate::app::request_ops::save_request;
 use crate::app::AppState;
+use crate::app::request_ops::save_request;
 use crate::domain::collection::Collection;
 use crate::message::{Message, SaveDialogMsg};
 use crate::services::storage;

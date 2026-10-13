@@ -1,13 +1,15 @@
 use iced::{
-    widget::{button, column, container, row, text, text_editor, Space},
     Alignment, Background, Border, Color, Element, Length,
+    widget::{Space, button, column, container, row, text, text_editor},
 };
 
 use crate::{
     message::Message,
-    ui::{icons, theme::{Palette, TEXT_SM, TEXT_XS}},
+    ui::{
+        icons,
+        theme::{Palette, TEXT_SM, TEXT_XS},
+    },
 };
-
 
 pub fn empty_state(message: &str) -> Element<'static, Message> {
     container(
@@ -24,7 +26,11 @@ pub fn empty_state(message: &str) -> Element<'static, Message> {
     .into()
 }
 
-pub fn table_footer(add_msg: Message, add_label: &'static str, bulk_msg: Message) -> Element<'static, Message> {
+pub fn table_footer(
+    add_msg: Message,
+    add_label: &'static str,
+    bulk_msg: Message,
+) -> Element<'static, Message> {
     let add_btn = button(
         row![
             icons::plus().size(11).color(Palette::accent()),
@@ -40,10 +46,20 @@ pub fn table_footer(add_msg: Message, add_label: &'static str, bulk_msg: Message
             background: if hovered {
                 Some(Background::Color(Palette::accent_soft()))
             } else {
-                Some(Background::Color(Color { a: 0.5, ..Palette::accent_soft() }))
+                Some(Background::Color(Color {
+                    a: 0.5,
+                    ..Palette::accent_soft()
+                }))
             },
             text_color: Palette::accent(),
-            border: Border { color: Color { a: 0.3, ..Palette::accent() }, width: 1.0, radius: 7.0.into() },
+            border: Border {
+                color: Color {
+                    a: 0.3,
+                    ..Palette::accent()
+                },
+                width: 1.0,
+                radius: 7.0.into(),
+            },
             ..Default::default()
         }
     })
@@ -54,16 +70,28 @@ pub fn table_footer(add_msg: Message, add_label: &'static str, bulk_msg: Message
         .style(|_t, status| {
             let hovered = matches!(status, iced::widget::button::Status::Hovered);
             iced::widget::button::Style {
-                background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
+                background: if hovered {
+                    Some(Background::Color(Palette::hover()))
+                } else {
+                    None
+                },
                 text_color: Palette::text_muted(),
-                border: Border { radius: 7.0.into(), ..Default::default() },
+                border: Border {
+                    radius: 7.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         })
         .padding([7, 10]);
 
     container(row![add_btn, Space::new().width(Length::Fill), bulk_btn].align_y(Alignment::Center))
-        .padding(iced::Padding { top: 10.0, right: 12.0, bottom: 12.0, left: 12.0 })
+        .padding(iced::Padding {
+            top: 10.0,
+            right: 12.0,
+            bottom: 12.0,
+            left: 12.0,
+        })
         .width(Length::Fill)
         .into()
 }
@@ -96,5 +124,8 @@ pub fn bulk_panel<'a>(
         .font(crate::ui::theme::MONO)
         .style(crate::ui::styles::scripts_editor);
 
-    column![toolbar, editor].spacing(0).height(Length::Fill).into()
+    column![toolbar, editor]
+        .spacing(0)
+        .height(Length::Fill)
+        .into()
 }

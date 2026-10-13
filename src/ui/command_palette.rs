@@ -1,9 +1,13 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_input},
     Background, Border, Color, Element, Length,
+    widget::{button, column, container, row, scrollable, text, text_input},
 };
 
-use crate::{app::AppState, message::{Message, PaletteMsg, SidebarMsg}, ui::theme::Palette};
+use crate::{
+    app::AppState,
+    message::{Message, PaletteMsg, SidebarMsg},
+    ui::theme::Palette,
+};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let search_input = text_input("Search requests, history, tabs…", &state.palette_query)
@@ -14,16 +18,32 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .width(Length::Fill)
         .style(|_t, _s| iced::widget::text_input::Style {
             background: Background::Color(Color::TRANSPARENT),
-            border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
             icon: Palette::text_muted(),
             placeholder: Palette::text_subtle(),
             value: Palette::text(),
-            selection: Color { a: 0.3, ..Palette::accent() },
+            selection: Color {
+                a: 0.3,
+                ..Palette::accent()
+            },
         });
 
     let search_row = row![
-        container(crate::ui::icons::search().size(15).color(Palette::text_subtle()))
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 14.0 }),
+        container(
+            crate::ui::icons::search()
+                .size(15)
+                .color(Palette::text_subtle())
+        )
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 14.0
+        }),
         search_input,
     ]
     .align_y(iced::Alignment::Center);
@@ -35,7 +55,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let row_el = button(
             row![
                 container(
-                    text(item.method).size(10).color(method_color).font(crate::ui::theme::MONO)
+                    text(item.method)
+                        .size(10)
+                        .color(method_color)
+                        .font(crate::ui::theme::MONO)
                 )
                 .width(50),
                 column![
@@ -58,27 +81,28 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let inner = column![
         container(search_row).padding([4, 0]),
-        container(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)).padding([0, 0]),
+        container(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider))
+            .padding([0, 0]),
         container(scrollable(list).height(Length::Shrink)).padding(6),
     ]
     .spacing(0)
     .width(620);
 
-    let modal = container(inner)
-        .style(palette_container)
-        .width(620);
+    let modal = container(inner).style(palette_container).width(620);
 
-    container(
-        column![
-            iced::widget::Space::new().width(Length::Fill).height(Length::FillPortion(1)),
-            row![
-                iced::widget::Space::new().width(Length::Fill),
-                modal,
-                iced::widget::Space::new().width(Length::Fill),
-            ],
-            iced::widget::Space::new().width(Length::Fill).height(Length::FillPortion(3)),
-        ]
-    )
+    container(column![
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::FillPortion(1)),
+        row![
+            iced::widget::Space::new().width(Length::Fill),
+            modal,
+            iced::widget::Space::new().width(Length::Fill),
+        ],
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::FillPortion(3)),
+    ])
     .style(backdrop)
     .width(Length::Fill)
     .height(Length::Fill)
@@ -107,8 +131,20 @@ pub fn items(state: &AppState) -> Vec<PaletteItem> {
         }
         // A WebSocket tab has no HTTP method; label it "WS" to match the tab
         // strip and URL bar rather than showing a method that is never sent.
-        let method_label = if tab.is_websocket() { "WS" } else { tab.method.as_str() };
-        let label = format!("{} {}", method_label, if tab.url.is_empty() { &tab.title } else { &tab.url });
+        let method_label = if tab.is_websocket() {
+            "WS"
+        } else {
+            tab.method.as_str()
+        };
+        let label = format!(
+            "{} {}",
+            method_label,
+            if tab.url.is_empty() {
+                &tab.title
+            } else {
+                &tab.url
+            }
+        );
         if matches(&label) {
             items.push(PaletteItem {
                 method: method_label.to_owned(),
@@ -121,7 +157,9 @@ pub fn items(state: &AppState) -> Vec<PaletteItem> {
     }
 
     for (col_id, reqs) in &state.requests {
-        let col_name = state.collections.iter()
+        let col_name = state
+            .collections
+            .iter()
             .find(|c| &c.id == col_id)
             .map(|c| c.name.as_str())
             .unwrap_or("Collection");
@@ -171,7 +209,12 @@ fn method_color(method: &str) -> Color {
 
 fn backdrop(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(Background::Color(Color { r: 0.0, g: 0.0, b: 0.0, a: 0.7 })),
+        background: Some(Background::Color(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.7,
+        })),
         ..Default::default()
     }
 }
@@ -185,7 +228,12 @@ fn palette_container(_theme: &iced::Theme) -> iced::widget::container::Style {
             radius: 12.0.into(),
         },
         shadow: iced::Shadow {
-            color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.6 },
+            color: Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.6,
+            },
             offset: iced::Vector::new(0.0, 10.0),
             blur_radius: 40.0,
         },
@@ -209,7 +257,14 @@ fn palette_row_style(
         background: bg,
         text_color: Palette::text(),
         border: Border {
-            color: if selected { Color { a: 0.30, ..Palette::accent() } } else { Color::TRANSPARENT },
+            color: if selected {
+                Color {
+                    a: 0.30,
+                    ..Palette::accent()
+                }
+            } else {
+                Color::TRANSPARENT
+            },
             width: if selected { 1.0 } else { 0.0 },
             radius: 8.0.into(),
         },

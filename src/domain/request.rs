@@ -148,7 +148,11 @@ impl ApiKeyLocation {
 impl std::str::FromStr for ApiKeyLocation {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "query" { Ok(Self::Query) } else { Ok(Self::Header) }
+        if s == "query" {
+            Ok(Self::Query)
+        } else {
+            Ok(Self::Header)
+        }
     }
 }
 
@@ -322,16 +326,17 @@ pub enum FormFieldType {
 /// map fails the whole operation on a stringified one.
 pub fn graphql_body(query: &str, variables: &str) -> Result<String, String> {
     let mut body = serde_json::Map::new();
-    body.insert("query".to_owned(), serde_json::Value::String(query.to_owned()));
+    body.insert(
+        "query".to_owned(),
+        serde_json::Value::String(query.to_owned()),
+    );
 
     let variables = variables.trim();
     if !variables.is_empty() {
         let parsed: serde_json::Value = serde_json::from_str(variables)
             .map_err(|e| format!("GraphQL variables are not valid JSON: {e}"))?;
         if !parsed.is_object() {
-            return Err(
-                "GraphQL variables must be a JSON object, e.g. {\"id\": 1}".to_owned(),
-            );
+            return Err("GraphQL variables must be a JSON object, e.g. {\"id\": 1}".to_owned());
         }
         body.insert("variables".to_owned(), parsed);
     }
@@ -359,8 +364,11 @@ mod graphql_tests {
 
     #[test]
     fn variables_are_embedded_as_json_not_a_string() {
-        let body = graphql_body("query($id: ID!) { user(id: $id) { name } }", r#"{"id": "42"}"#)
-            .unwrap();
+        let body = graphql_body(
+            "query($id: ID!) { user(id: $id) { name } }",
+            r#"{"id": "42"}"#,
+        )
+        .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(parsed["variables"].is_object());
         assert_eq!(parsed["variables"]["id"], "42");
@@ -379,7 +387,12 @@ mod query_sync_tests {
     use super::*;
 
     fn kv(key: &str, value: &str, enabled: bool) -> KeyValue {
-        KeyValue { id: "x".into(), key: key.into(), value: value.into(), enabled }
+        KeyValue {
+            id: "x".into(),
+            key: key.into(),
+            value: value.into(),
+            enabled,
+        }
     }
 
     #[test]
@@ -409,13 +422,19 @@ mod query_sync_tests {
     #[test]
     fn rebuild_url_skips_disabled_and_empty() {
         let params = [kv("a", "1", true), kv("b", "2", false), kv("", "x", true)];
-        assert_eq!(sync_url_from_params("https://x.com/p?old=1", &params), "https://x.com/p?a=1");
+        assert_eq!(
+            sync_url_from_params("https://x.com/p?old=1", &params),
+            "https://x.com/p?a=1"
+        );
     }
 
     #[test]
     fn rebuild_encodes_specials() {
         let params = [kv("q", "a b&c", true)];
-        assert_eq!(sync_url_from_params("https://x.com", &params), "https://x.com?q=a%20b%26c");
+        assert_eq!(
+            sync_url_from_params("https://x.com", &params),
+            "https://x.com?q=a%20b%26c"
+        );
     }
 
     #[test]
@@ -426,8 +445,16 @@ mod query_sync_tests {
         assert_eq!(params[1].value, "a&b");
         // params → url → params is stable
         let rebuilt = sync_url_from_params(url, &params);
-        assert_eq!(sync_params_from_url(&rebuilt, &[]).iter().map(|p| (p.key.clone(), p.value.clone())).collect::<Vec<_>>(),
-                   params.iter().map(|p| (p.key.clone(), p.value.clone())).collect::<Vec<_>>());
+        assert_eq!(
+            sync_params_from_url(&rebuilt, &[])
+                .iter()
+                .map(|p| (p.key.clone(), p.value.clone()))
+                .collect::<Vec<_>>(),
+            params
+                .iter()
+                .map(|p| (p.key.clone(), p.value.clone()))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

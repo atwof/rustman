@@ -7,7 +7,10 @@ use crate::services::update;
 pub(super) fn handle(state: &mut AppState, msg: UpdateMsg) -> Task<Message> {
     match msg {
         UpdateMsg::Check => {
-            if matches!(state.update, UpdateState::Checking | UpdateState::Installing | UpdateState::Ready(_)) {
+            if matches!(
+                state.update,
+                UpdateState::Checking | UpdateState::Installing | UpdateState::Ready(_)
+            ) {
                 return Task::none();
             }
             state.update = UpdateState::Checking;

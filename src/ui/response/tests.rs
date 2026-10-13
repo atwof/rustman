@@ -1,6 +1,6 @@
 use iced::{
-    widget::{column, container, row, scrollable, text, text_editor},
     Background, Border, Element, Length,
+    widget::{column, container, row, scrollable, text, text_editor},
 };
 
 use crate::{
@@ -13,9 +13,15 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     if let Some(err) = &tab.script_error {
         return container(
             column![
-                text("Script error").size(13).color(Palette::ERROR).font(crate::ui::theme::UI_FONT_MEDIUM),
+                text("Script error")
+                    .size(13)
+                    .color(Palette::ERROR)
+                    .font(crate::ui::theme::UI_FONT_MEDIUM),
                 iced::widget::Space::new().height(6),
-                text(err.clone()).size(12).color(Palette::text_muted()).font(crate::ui::theme::MONO),
+                text(err.clone())
+                    .size(12)
+                    .color(Palette::text_muted())
+                    .font(crate::ui::theme::MONO),
             ]
             .align_x(iced::Alignment::Center),
         )
@@ -43,7 +49,10 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         let editor_height = ((line_count as f32) * 20.0 + 24.0).clamp(140.0, 400.0);
         col = col.push(
             container(
-                text("Console").size(11).color(Palette::text_muted()).font(crate::ui::theme::UI_FONT_MEDIUM),
+                text("Console")
+                    .size(11)
+                    .color(Palette::text_muted())
+                    .font(crate::ui::theme::UI_FONT_MEDIUM),
             )
             .padding([8, 12]),
         );
@@ -56,7 +65,11 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                     .height(editor_height)
                     .style(|_theme, _status| text_editor::Style {
                         background: Background::Color(Palette::surface()),
-                        border: Border { color: Palette::border_subtle(), width: 0.0, radius: 0.0.into() },
+                        border: Border {
+                            color: Palette::border_subtle(),
+                            width: 0.0,
+                            radius: 0.0.into(),
+                        },
                         placeholder: Palette::text_subtle(),
                         value: Palette::text(),
                         selection: Palette::accent_soft(),
@@ -82,20 +95,32 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         container(
             text(format!("{passed_count} / {total} passed"))
                 .size(11)
-                .color(if passed_count == total { Palette::SUCCESS } else { Palette::ERROR })
+                .color(if passed_count == total {
+                    Palette::SUCCESS
+                } else {
+                    Palette::ERROR
+                })
                 .font(crate::ui::theme::UI_FONT_MEDIUM),
         )
         .padding([8, 12]),
     );
 
     for result in &tab.test_results {
-        let (icon, color) =
-            if result.passed { ("✓", Palette::SUCCESS) } else { ("✗", Palette::ERROR) };
+        let (icon, color) = if result.passed {
+            ("✓", Palette::SUCCESS)
+        } else {
+            ("✗", Palette::ERROR)
+        };
         col = col.push(
             container(
                 row![
-                    container(text(icon).size(12).color(color).font(crate::ui::theme::MONO))
-                        .width(24),
+                    container(
+                        text(icon)
+                            .size(12)
+                            .color(color)
+                            .font(crate::ui::theme::MONO)
+                    )
+                    .width(24),
                     text(result.name.clone()).size(12).color(Palette::text()),
                 ]
                 .align_y(iced::Alignment::Center)
@@ -103,7 +128,11 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             )
             .style(move |_| iced::widget::container::Style {
                 background: Some(Background::Color(Palette::surface())),
-                border: Border { color: Palette::border_subtle(), width: 0.0, radius: 0.0.into() },
+                border: Border {
+                    color: Palette::border_subtle(),
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
                 ..Default::default()
             })
             .padding([6, 12])

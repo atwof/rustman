@@ -1,13 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use iced::{Color, Font};
 use iced::font::Weight;
+use iced::{Color, Font};
 
 pub const MONO: Font = Font::with_name("JetBrains Mono");
 
-
 pub const UI_FONT: Font = Font::with_name("Noto Sans");
-pub const UI_FONT_MEDIUM: Font = Font { weight: Weight::Medium, ..UI_FONT };
+pub const UI_FONT_MEDIUM: Font = Font {
+    weight: Weight::Medium,
+    ..UI_FONT
+};
 
 // ── Type scale ──────────────────────────────────────────────────────────────
 // Named sizes so panels share one hierarchy instead of ad-hoc literals.
@@ -225,19 +227,38 @@ pub fn thin_scrollbar(
     // Hidden at rest (content scrolls fine with the wheel without a
     // persistent bar sitting there); appears clearly on hover/drag so it's
     // still easy to find and grab when you actually want to drag it.
-    let alpha = if dragging { 0.95 } else if hovered { 0.75 } else { 0.0 };
+    let alpha = if dragging {
+        0.95
+    } else if hovered {
+        0.75
+    } else {
+        0.0
+    };
     let s = Palette::text_subtle();
-    let scroller = Color { r: s.r, g: s.g, b: s.b, a: alpha };
+    let scroller = Color {
+        r: s.r,
+        g: s.g,
+        b: s.b,
+        a: alpha,
+    };
     // A visible track on interaction: the whole rail is a click target (iced
     // jumps to the pressed position), which is what makes a collapsed thumb
     // navigable -- but only if the user can see where to click.
-    let rail_bg = Color { r: 0.5, g: 0.5, b: 0.5, a: if hovered || dragging { 0.14 } else { 0.0 } };
+    let rail_bg = Color {
+        r: 0.5,
+        g: 0.5,
+        b: 0.5,
+        a: if hovered || dragging { 0.14 } else { 0.0 },
+    };
     let rail = iced::widget::scrollable::Rail {
         background: Some(iced::Background::Color(rail_bg)),
         border: iced::Border::default(),
         scroller: iced::widget::scrollable::Scroller {
             background: iced::Background::Color(scroller),
-            border: iced::Border { radius: 3.0.into(), ..Default::default() },
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
         },
     };
     iced::widget::scrollable::Style {
@@ -263,15 +284,29 @@ pub fn tab_scrollbar(
 ) -> iced::widget::scrollable::Style {
     let hovered = matches!(status, iced::widget::scrollable::Status::Hovered { .. });
     let dragging = matches!(status, iced::widget::scrollable::Status::Dragged { .. });
-    let alpha = if dragging { 0.85 } else if hovered { 0.55 } else { 0.22 };
+    let alpha = if dragging {
+        0.85
+    } else if hovered {
+        0.55
+    } else {
+        0.22
+    };
     let s = Palette::text_subtle();
-    let scroller = Color { r: s.r, g: s.g, b: s.b, a: alpha };
+    let scroller = Color {
+        r: s.r,
+        g: s.g,
+        b: s.b,
+        a: alpha,
+    };
     let rail = iced::widget::scrollable::Rail {
         background: None,
         border: iced::Border::default(),
         scroller: iced::widget::scrollable::Scroller {
             background: iced::Background::Color(scroller),
-            border: iced::Border { radius: 3.0.into(), ..Default::default() },
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
         },
     };
     iced::widget::scrollable::Style {
@@ -319,23 +354,55 @@ pub fn hidden_scrollbar(
 pub struct Palette;
 
 impl Palette {
-    pub fn set_theme_idx(idx: usize) { THEME_IDX.store(idx.min(THEMES.len() - 1), Ordering::Relaxed); }
-    pub fn theme_idx() -> usize { THEME_IDX.load(Ordering::Relaxed) }
-    fn current() -> &'static ThemeSpec { &THEMES[Self::theme_idx()] }
+    pub fn set_theme_idx(idx: usize) {
+        THEME_IDX.store(idx.min(THEMES.len() - 1), Ordering::Relaxed);
+    }
+    pub fn theme_idx() -> usize {
+        THEME_IDX.load(Ordering::Relaxed)
+    }
+    fn current() -> &'static ThemeSpec {
+        &THEMES[Self::theme_idx()]
+    }
 
-    pub fn is_dark() -> bool { Self::current().dark }
-    pub fn background() -> Color { Self::current().background }
-    pub fn surface() -> Color { Self::current().surface }
-    pub fn surface_high() -> Color { Self::current().surface_high }
-    pub fn surface_raised() -> Color { Self::current().surface_raised }
-    pub fn row_even() -> Color { Self::surface() }
-    pub fn row_odd() -> Color { Self::current().row_odd }
-    pub fn border() -> Color { Self::current().border }
-    pub fn border_subtle() -> Color { Self::current().border_subtle }
-    pub fn text() -> Color { Self::current().text }
-    pub fn text_muted() -> Color { Self::current().text_muted }
-    pub fn text_subtle() -> Color { Self::current().text_subtle }
-    pub fn accent() -> Color { Self::current().accent }
+    pub fn is_dark() -> bool {
+        Self::current().dark
+    }
+    pub fn background() -> Color {
+        Self::current().background
+    }
+    pub fn surface() -> Color {
+        Self::current().surface
+    }
+    pub fn surface_high() -> Color {
+        Self::current().surface_high
+    }
+    pub fn surface_raised() -> Color {
+        Self::current().surface_raised
+    }
+    pub fn row_even() -> Color {
+        Self::surface()
+    }
+    pub fn row_odd() -> Color {
+        Self::current().row_odd
+    }
+    pub fn border() -> Color {
+        Self::current().border
+    }
+    pub fn border_subtle() -> Color {
+        Self::current().border_subtle
+    }
+    pub fn text() -> Color {
+        Self::current().text
+    }
+    pub fn text_muted() -> Color {
+        Self::current().text_muted
+    }
+    pub fn text_subtle() -> Color {
+        Self::current().text_subtle
+    }
+    pub fn accent() -> Color {
+        Self::current().accent
+    }
     /// Accent lightened for hover states on filled buttons.
     pub fn accent_hover() -> Color {
         let a = Self::accent();
@@ -346,22 +413,37 @@ impl Palette {
             a: 1.0,
         }
     }
-    pub fn hover() -> Color { Self::current().hover }
+    pub fn hover() -> Color {
+        Self::current().hover
+    }
     /// Recessed chrome (icon rail, tab strip) — deliberately a step darker
     /// than `background` so it reads as a distinct bar, not the same void.
-    pub fn chrome() -> Color { Self::current().chrome }
+    pub fn chrome() -> Color {
+        Self::current().chrome
+    }
 
     pub fn accent_soft() -> Color {
         let a = Self::accent();
         Self::soft(a)
     }
-    pub fn success_soft() -> Color { Self::soft(Self::SUCCESS) }
-    pub fn warning_soft() -> Color { Self::soft(Self::WARNING) }
-    pub fn error_soft() -> Color { Self::soft(Self::ERROR) }
+    pub fn success_soft() -> Color {
+        Self::soft(Self::SUCCESS)
+    }
+    pub fn warning_soft() -> Color {
+        Self::soft(Self::WARNING)
+    }
+    pub fn error_soft() -> Color {
+        Self::soft(Self::ERROR)
+    }
 
     fn soft(color: Color) -> Color {
         if Self::is_dark() {
-            Color { r: color.r * 0.22, g: color.g * 0.22, b: color.b * 0.24, a: 1.0 }
+            Color {
+                r: color.r * 0.22,
+                g: color.g * 0.22,
+                b: color.b * 0.24,
+                a: 1.0,
+            }
         } else {
             Color {
                 r: 1.0 - ((1.0 - color.r) * 0.18),
@@ -374,13 +456,13 @@ impl Palette {
 
     pub const SUCCESS: Color = Color::from_rgb(0.133, 0.773, 0.478);
     pub const WARNING: Color = Color::from_rgb(0.984, 0.749, 0.184);
-    pub const ERROR:   Color = Color::from_rgb(0.961, 0.267, 0.341);
-    pub const GET:     Color = Color::from_rgb(0.133, 0.773, 0.478);
-    pub const POST:    Color = Color::from_rgb(0.988, 0.580, 0.110);
-    pub const PUT:     Color = Color::from_rgb(0.388, 0.400, 0.945);
-    pub const PATCH:   Color = Color::from_rgb(0.678, 0.400, 0.945);
-    pub const DELETE:  Color = Color::from_rgb(0.961, 0.267, 0.341);
-    pub const HEAD:    Color = Color::from_rgb(0.631, 0.631, 0.667);
+    pub const ERROR: Color = Color::from_rgb(0.961, 0.267, 0.341);
+    pub const GET: Color = Color::from_rgb(0.133, 0.773, 0.478);
+    pub const POST: Color = Color::from_rgb(0.988, 0.580, 0.110);
+    pub const PUT: Color = Color::from_rgb(0.388, 0.400, 0.945);
+    pub const PATCH: Color = Color::from_rgb(0.678, 0.400, 0.945);
+    pub const DELETE: Color = Color::from_rgb(0.961, 0.267, 0.341);
+    pub const HEAD: Color = Color::from_rgb(0.631, 0.631, 0.667);
 
     /// Code-editor style from Palette — makes editor bg match all other panels.
     pub fn code_editor_style() -> iced_code_editor::Style {
@@ -393,10 +475,30 @@ impl Palette {
             gutter_border: Self::border_subtle(),
             line_number_color: Self::text_subtle(),
             scrollbar_background: Color::TRANSPARENT,
-            scroller_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.5 },
-            current_line_highlight: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.10 },
-            whitespace_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.4 },
-            selection_color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.28 },
+            scroller_color: Color {
+                r: Self::text_subtle().r,
+                g: Self::text_subtle().g,
+                b: Self::text_subtle().b,
+                a: 0.5,
+            },
+            current_line_highlight: Color {
+                r: accent.r,
+                g: accent.g,
+                b: accent.b,
+                a: 0.10,
+            },
+            whitespace_color: Color {
+                r: Self::text_subtle().r,
+                g: Self::text_subtle().g,
+                b: Self::text_subtle().b,
+                a: 0.4,
+            },
+            selection_color: Color {
+                r: accent.r,
+                g: accent.g,
+                b: accent.b,
+                a: 0.28,
+            },
             syntax_theme_name: t.syntax_theme,
             json_key_color: accent,
         }

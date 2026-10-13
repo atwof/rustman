@@ -1,7 +1,7 @@
-
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod app;
+mod consts;
 mod domain;
 mod jobs;
 mod message;

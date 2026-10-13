@@ -1,4 +1,4 @@
-use rustman_engine::{run, Effect, HostInput, ResponseInput};
+use rustman_engine::{Effect, HostInput, ResponseInput, run};
 
 #[test]
 fn pre_request_injects_bearer_header_from_env() {
@@ -17,7 +17,10 @@ fn pre_request_injects_bearer_header_from_env() {
 
     assert_eq!(
         outcome.effects,
-        vec![Effect::SetHeader("Authorization".to_owned(), "Bearer abc123".to_owned())]
+        vec![Effect::SetHeader(
+            "Authorization".to_owned(),
+            "Bearer abc123".to_owned()
+        )]
     );
 }
 
@@ -50,7 +53,10 @@ fn test_script_decodes_jwt_and_extracts_claims_to_env() {
 
     let input = HostInput {
         headers: vec![("Authorization".to_owned(), format!("Bearer {jwt}"))],
-        response: Some(ResponseInput { status: 200, body: "{}".to_owned() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: "{}".to_owned(),
+        }),
         ..Default::default()
     };
 
@@ -61,8 +67,14 @@ fn test_script_decodes_jwt_and_extracts_claims_to_env() {
         vec![
             Effect::SetEnv("user_id".to_owned(), "user-42".to_owned()),
             Effect::SetEnv("access_token".to_owned(), "tok-xyz".to_owned()),
-            Effect::Test { name: "status is 200".to_owned(), passed: true },
-            Effect::Test { name: "has user id".to_owned(), passed: true },
+            Effect::Test {
+                name: "status is 200".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "has user id".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -87,8 +99,14 @@ fn test_script_reads_response_json_body() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "id is 7".to_owned(), passed: true },
-            Effect::Test { name: "name matches".to_owned(), passed: true },
+            Effect::Test {
+                name: "id is 7".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "name matches".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -104,13 +122,22 @@ fn if_else_both_branches_work() {
         }
     "#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 404, body: String::new() }),
+        response: Some(ResponseInput {
+            status: 404,
+            body: String::new(),
+        }),
         ..Default::default()
     };
 
     let outcome = run(script, input).expect("script should run");
 
-    assert_eq!(outcome.effects, vec![Effect::Test { name: "ok range".to_owned(), passed: false }]);
+    assert_eq!(
+        outcome.effects,
+        vec![Effect::Test {
+            name: "ok range".to_owned(),
+            passed: false
+        }]
+    );
 }
 
 #[test]
@@ -121,7 +148,13 @@ fn cookie_lookup_is_case_insensitive() {
         ..Default::default()
     };
     let outcome = run(script, input).expect("script should run");
-    assert_eq!(outcome.effects, vec![Effect::Test { name: "has session".to_owned(), passed: true }]);
+    assert_eq!(
+        outcome.effects,
+        vec![Effect::Test {
+            name: "has session".to_owned(),
+            passed: true
+        }]
+    );
 }
 
 #[test]
@@ -138,9 +171,18 @@ fn missing_env_header_cookie_are_empty_string_not_null() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "env missing".to_owned(), passed: true },
-            Effect::Test { name: "header missing".to_owned(), passed: true },
-            Effect::Test { name: "cookie missing".to_owned(), passed: true },
+            Effect::Test {
+                name: "env missing".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "header missing".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "cookie missing".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -153,7 +195,13 @@ fn base64_round_trip() {
         test("round trips", decoded == "hello")
     "#;
     let outcome = run(script, HostInput::default()).expect("script should run");
-    assert_eq!(outcome.effects, vec![Effect::Test { name: "round trips".to_owned(), passed: true }]);
+    assert_eq!(
+        outcome.effects,
+        vec![Effect::Test {
+            name: "round trips".to_owned(),
+            passed: true
+        }]
+    );
 }
 
 #[test]
@@ -169,8 +217,14 @@ fn json_stringify_round_trips_through_json_parse() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "id survived the round trip".to_owned(), passed: true },
-            Effect::Test { name: "name survived the round trip".to_owned(), passed: true },
+            Effect::Test {
+                name: "id survived the round trip".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "name survived the round trip".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -187,7 +241,10 @@ fn json_stringify_produces_real_quoted_json_not_the_debug_format() {
     let outcome = run(script, HostInput::default()).expect("script should run");
     assert_eq!(
         outcome.effects,
-        vec![Effect::SetEnv("claims_json".to_owned(), r#"{"sub":"user-42"}"#.to_owned())]
+        vec![Effect::SetEnv(
+            "claims_json".to_owned(),
+            r#"{"sub":"user-42"}"#.to_owned()
+        )]
     );
 }
 
@@ -199,7 +256,13 @@ fn aes_round_trip_decrypts_back_to_the_original_plaintext() {
         test("round trips", plaintext == "top secret")
     "#;
     let outcome = run(script, HostInput::default()).expect("script should run");
-    assert_eq!(outcome.effects, vec![Effect::Test { name: "round trips".to_owned(), passed: true }]);
+    assert_eq!(
+        outcome.effects,
+        vec![Effect::Test {
+            name: "round trips".to_owned(),
+            passed: true
+        }]
+    );
 }
 
 #[test]
@@ -212,7 +275,10 @@ fn aes_decrypt_with_the_wrong_key_fails_closed_not_open() {
     let outcome = run(script, HostInput::default()).expect("script should run");
     assert_eq!(
         outcome.effects,
-        vec![Effect::Test { name: "decrypt with wrong key returns null".to_owned(), passed: true }]
+        vec![Effect::Test {
+            name: "decrypt with wrong key returns null".to_owned(),
+            passed: true
+        }]
     );
 }
 
@@ -231,7 +297,10 @@ fn set_body_encrypts_the_outgoing_request_body() {
     assert_eq!(outcome.effects.len(), 1);
     match &outcome.effects[0] {
         Effect::SetBody(encrypted) => {
-            assert_ne!(encrypted, r#"{"amount": 42}"#, "body should no longer be the plaintext");
+            assert_ne!(
+                encrypted, r#"{"amount": 42}"#,
+                "body should no longer be the plaintext"
+            );
         }
         other => panic!("expected a SetBody effect, got {other:?}"),
     }
@@ -249,7 +318,10 @@ fn set_header_auto_stringifies_an_object_argument_instead_of_erroring() {
     let outcome = run(script, HostInput::default()).expect("script should run");
     assert_eq!(
         outcome.effects,
-        vec![Effect::SetHeader("X-User-Detail".to_owned(), r#"{"sub":"user-42"}"#.to_owned())]
+        vec![Effect::SetHeader(
+            "X-User-Detail".to_owned(),
+            r#"{"sub":"user-42"}"#.to_owned()
+        )]
     );
 }
 
@@ -277,7 +349,10 @@ fn print_logs_a_stringlike_value_for_debugging() {
         print(claims.payload)
     "#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 200, body: String::new() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: String::new(),
+        }),
         ..Default::default()
     };
     let outcome = run(script, input).expect("script should run");
@@ -308,8 +383,13 @@ fn headers_returns_every_header_as_an_object_for_debugging() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Log(r#"{"Authorization":"Bearer abc","Content-Type":"application/json"}"#.to_owned()),
-            Effect::Test { name: "can field-access a specific header".to_owned(), passed: true },
+            Effect::Log(
+                r#"{"Authorization":"Bearer abc","Content-Type":"application/json"}"#.to_owned()
+            ),
+            Effect::Test {
+                name: "can field-access a specific header".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -329,8 +409,14 @@ fn url_and_body_are_available_in_both_pre_request_and_test_scripts() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "url visible".to_owned(), passed: true },
-            Effect::Test { name: "body visible".to_owned(), passed: true },
+            Effect::Test {
+                name: "url visible".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "body visible".to_owned(),
+                passed: true
+            },
         ]
     );
 
@@ -345,15 +431,24 @@ fn url_and_body_are_available_in_both_pre_request_and_test_scripts() {
     let input = HostInput {
         url: "https://api.test/orders".to_owned(),
         body: r#"{"qty": 1}"#.to_owned(),
-        response: Some(ResponseInput { status: 201, body: "{}".to_owned() }),
+        response: Some(ResponseInput {
+            status: 201,
+            body: "{}".to_owned(),
+        }),
         ..Default::default()
     };
     let outcome = run(test_script, input).expect("script should run");
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "url visible in test script".to_owned(), passed: true },
-            Effect::Test { name: "body visible in test script".to_owned(), passed: true },
+            Effect::Test {
+                name: "url visible in test script".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "body visible in test script".to_owned(),
+                passed: true
+            },
         ]
     );
 }
@@ -369,7 +464,11 @@ fn syntax_error_reports_a_line_number() {
 fn unknown_function_is_a_runtime_error_not_a_panic() {
     let script = "does_not_exist()";
     let err = run(script, HostInput::default()).unwrap_err();
-    assert!(err.message.contains("does_not_exist"), "message was: {}", err.message);
+    assert!(
+        err.message.contains("does_not_exist"),
+        "message was: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -379,18 +478,27 @@ fn print_handles_response_json_object_directly() {
         print(body)
     "#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 200, body: r#"{"id": 7, "name": "ferris"}"#.to_owned() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: r#"{"id": 7, "name": "ferris"}"#.to_owned(),
+        }),
         ..Default::default()
     };
     let outcome = run(script, input).expect("script should run");
-    assert_eq!(outcome.effects, vec![Effect::Log(r#"{"id":7,"name":"ferris"}"#.to_owned())]);
+    assert_eq!(
+        outcome.effects,
+        vec![Effect::Log(r#"{"id":7,"name":"ferris"}"#.to_owned())]
+    );
 }
 
 #[test]
 fn print_handles_response_json_inline_without_a_let_binding() {
     let script = r#"print(response.json())"#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 200, body: r#"{"id": 7}"#.to_owned() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: r#"{"id": 7}"#.to_owned(),
+        }),
         ..Default::default()
     };
     let outcome = run(script, input).expect("script should run");
@@ -462,10 +570,22 @@ fn contains_matches_a_substring_of_the_response_body_both_spellings() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "function form".to_owned(), passed: true },
-            Effect::Test { name: "method form".to_owned(), passed: true },
-            Effect::Test { name: "whole response shorthand".to_owned(), passed: true },
-            Effect::Test { name: "absent keyword".to_owned(), passed: false },
+            Effect::Test {
+                name: "function form".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "method form".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "whole response shorthand".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "absent keyword".to_owned(),
+                passed: false
+            },
         ]
     );
 }
@@ -477,7 +597,10 @@ fn contains_is_case_sensitive() {
         test("wrong case", contains(response.text(), "expired"))
     "#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 401, body: "Token Expired".to_owned() }),
+        response: Some(ResponseInput {
+            status: 401,
+            body: "Token Expired".to_owned(),
+        }),
         ..Default::default()
     };
 
@@ -486,8 +609,14 @@ fn contains_is_case_sensitive() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "exact case".to_owned(), passed: true },
-            Effect::Test { name: "wrong case".to_owned(), passed: false },
+            Effect::Test {
+                name: "exact case".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "wrong case".to_owned(),
+                passed: false
+            },
         ]
     );
 }
@@ -515,11 +644,26 @@ fn contains_tests_membership_on_an_array_and_keys_on_an_object() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "array holds the value".to_owned(), passed: true },
-            Effect::Test { name: "array lacks the value".to_owned(), passed: false },
-            Effect::Test { name: "array holds a number".to_owned(), passed: true },
-            Effect::Test { name: "object has the key".to_owned(), passed: true },
-            Effect::Test { name: "object lacks the key".to_owned(), passed: false },
+            Effect::Test {
+                name: "array holds the value".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "array lacks the value".to_owned(),
+                passed: false
+            },
+            Effect::Test {
+                name: "array holds a number".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "object has the key".to_owned(),
+                passed: true
+            },
+            Effect::Test {
+                name: "object lacks the key".to_owned(),
+                passed: false
+            },
         ]
     );
 }
@@ -534,8 +678,14 @@ fn contains_on_a_header_drives_an_if_branch() {
         }
     "#;
     let input = HostInput {
-        headers: vec![("Content-Type".to_owned(), "application/json; charset=utf-8".to_owned())],
-        response: Some(ResponseInput { status: 200, body: "{}".to_owned() }),
+        headers: vec![(
+            "Content-Type".to_owned(),
+            "application/json; charset=utf-8".to_owned(),
+        )],
+        response: Some(ResponseInput {
+            status: 200,
+            body: "{}".to_owned(),
+        }),
         ..Default::default()
     };
 
@@ -543,7 +693,10 @@ fn contains_on_a_header_drives_an_if_branch() {
 
     assert_eq!(
         outcome.effects,
-        vec![Effect::SetEnv("last_content_type".to_owned(), "json".to_owned())]
+        vec![Effect::SetEnv(
+            "last_content_type".to_owned(),
+            "json".to_owned()
+        )]
     );
 }
 
@@ -557,7 +710,10 @@ fn contains_on_a_missing_value_is_false_not_an_error() {
         test("number haystack", contains(response.status, "40"))
     "#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 404, body: "{}".to_owned() }),
+        response: Some(ResponseInput {
+            status: 404,
+            body: "{}".to_owned(),
+        }),
         ..Default::default()
     };
 
@@ -566,9 +722,18 @@ fn contains_on_a_missing_value_is_false_not_an_error() {
     assert_eq!(
         outcome.effects,
         vec![
-            Effect::Test { name: "missing env var".to_owned(), passed: false },
-            Effect::Test { name: "missing field".to_owned(), passed: false },
-            Effect::Test { name: "number haystack".to_owned(), passed: false },
+            Effect::Test {
+                name: "missing env var".to_owned(),
+                passed: false
+            },
+            Effect::Test {
+                name: "missing field".to_owned(),
+                passed: false
+            },
+            Effect::Test {
+                name: "number haystack".to_owned(),
+                passed: false
+            },
         ]
     );
 }
@@ -577,7 +742,10 @@ fn contains_on_a_missing_value_is_false_not_an_error() {
 fn contains_stringifies_a_non_string_needle_against_a_string_haystack() {
     let script = r#"test("id is in the body", contains(response.text(), 7))"#;
     let input = HostInput {
-        response: Some(ResponseInput { status: 200, body: r#"{"id": 7}"#.to_owned() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: r#"{"id": 7}"#.to_owned(),
+        }),
         ..Default::default()
     };
 
@@ -585,7 +753,10 @@ fn contains_stringifies_a_non_string_needle_against_a_string_haystack() {
 
     assert_eq!(
         outcome.effects,
-        vec![Effect::Test { name: "id is in the body".to_owned(), passed: true }]
+        vec![Effect::Test {
+            name: "id is in the body".to_owned(),
+            passed: true
+        }]
     );
 }
 
@@ -593,7 +764,11 @@ fn contains_stringifies_a_non_string_needle_against_a_string_haystack() {
 fn contains_with_a_missing_argument_is_an_error() {
     let err = run(r#"test("x", contains("haystack"))"#, HostInput::default())
         .expect_err("contains() needs both a haystack and a needle");
-    assert!(err.message.contains("contains"), "unexpected message: {}", err.message);
+    assert!(
+        err.message.contains("contains"),
+        "unexpected message: {}",
+        err.message
+    );
 }
 
 #[test]
@@ -602,7 +777,10 @@ fn negated_contains_asserts_a_keyword_is_absent() {
     let script = r#"test("no stack trace leaked", !contains(response.text(), "panicked at"))"#;
 
     let clean = HostInput {
-        response: Some(ResponseInput { status: 200, body: r#"{"ok": true}"#.to_owned() }),
+        response: Some(ResponseInput {
+            status: 200,
+            body: r#"{"ok": true}"#.to_owned(),
+        }),
         ..Default::default()
     };
     let leaked = HostInput {
@@ -616,10 +794,16 @@ fn negated_contains_asserts_a_keyword_is_absent() {
     let name = "no stack trace leaked".to_owned();
     assert_eq!(
         run(script, clean).expect("script should run").effects,
-        vec![Effect::Test { name: name.clone(), passed: true }]
+        vec![Effect::Test {
+            name: name.clone(),
+            passed: true
+        }]
     );
     assert_eq!(
         run(script, leaked).expect("script should run").effects,
-        vec![Effect::Test { name, passed: false }]
+        vec![Effect::Test {
+            name,
+            passed: false
+        }]
     );
 }

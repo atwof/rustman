@@ -13,9 +13,9 @@
 //! response needs previewing. Every later resize/content/visibility change
 //! is a direct, synchronous call from `update()` — no `Task` required.
 
-use std::cell::RefCell;
 #[cfg(feature = "webview")]
 use std::cell::Cell;
+use std::cell::RefCell;
 
 use iced::window;
 #[cfg(feature = "webview")]
@@ -86,17 +86,13 @@ pub fn last_error() -> Option<String> {
 /// there is no point rendering megabytes of fallback text — the full source
 /// stays one copy away.
 #[cfg(feature = "webview")]
-pub fn html_fallback_for(
-    _resp: &crate::domain::response::HttpResponse,
-) -> Option<String> {
+pub fn html_fallback_for(_resp: &crate::domain::response::HttpResponse) -> Option<String> {
     None
 }
 
 /// See above.
 #[cfg(not(feature = "webview"))]
-pub fn html_fallback_for(
-    resp: &crate::domain::response::HttpResponse,
-) -> Option<String> {
+pub fn html_fallback_for(resp: &crate::domain::response::HttpResponse) -> Option<String> {
     if !resp.is_html() || resp.body.is_empty() {
         return None;
     }
@@ -205,8 +201,7 @@ pub fn exists() -> bool {
 /// reset scroll position and flash on every tick).
 #[cfg(feature = "webview")]
 pub fn load_html_if_changed(html: &str) {
-    let already_loaded =
-        LAST_HTML.with(|last| last.borrow().as_deref() == Some(html));
+    let already_loaded = LAST_HTML.with(|last| last.borrow().as_deref() == Some(html));
     if already_loaded {
         return;
     }
@@ -248,7 +243,6 @@ pub fn set_visible(visible: bool) {
 #[cfg(not(feature = "webview"))]
 pub fn set_visible(_visible: bool) {}
 
-
 pub fn scaled_bounds(bounds: iced::Rectangle, ui_scale: f64) -> iced::Rectangle {
     let scale = if ui_scale.is_finite() && ui_scale > 0.0 {
         ui_scale as f32
@@ -277,7 +271,12 @@ mod tests {
 
     #[test]
     fn scaled_bounds_applies_app_scale_factor() {
-        let bounds = iced::Rectangle { x: 100.0, y: 50.0, width: 400.0, height: 300.0 };
+        let bounds = iced::Rectangle {
+            x: 100.0,
+            y: 50.0,
+            width: 400.0,
+            height: 300.0,
+        };
 
         let scaled = scaled_bounds(bounds, 1.5);
 
@@ -289,14 +288,24 @@ mod tests {
 
     #[test]
     fn scaled_bounds_is_identity_at_unit_scale() {
-        let bounds = iced::Rectangle { x: 10.0, y: 20.0, width: 30.0, height: 40.0 };
+        let bounds = iced::Rectangle {
+            x: 10.0,
+            y: 20.0,
+            width: 30.0,
+            height: 40.0,
+        };
 
         assert_eq!(scaled_bounds(bounds, 1.0), bounds);
     }
 
     #[test]
     fn scaled_bounds_rejects_nonsense_scales() {
-        let bounds = iced::Rectangle { x: 10.0, y: 20.0, width: 30.0, height: 40.0 };
+        let bounds = iced::Rectangle {
+            x: 10.0,
+            y: 20.0,
+            width: 30.0,
+            height: 40.0,
+        };
 
         // A zero, negative or non-finite scale must not collapse the webview
         // to nothing (which would look exactly like "it didn't open").

@@ -63,13 +63,44 @@ pub fn native_import(json: &str) -> Result<Vec<crate::domain::group::ImportedCol
     Ok(vec![convert(file)])
 }
 
+/// What a pasted/dropped command line looks like, decided from its first
+/// word only. Classification must stay O(prefix): this runs per keystroke in
+/// the URL bar, and lowercasing megabytes of pasted text on every event used
+/// to freeze input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PastedCommand {
+    Curl,
+    Httpie,
+    Other,
+}
+
+pub fn classify_pasted_command(input: &str) -> PastedCommand {
+    let head: String = input
+        .trim_start()
+        .chars()
+        .take(16)
+        .collect::<String>()
+        .to_lowercase();
+    if head.starts_with("curl ") || head.starts_with("curl\t") {
+        PastedCommand::Curl
+    } else if crate::services::import::httpie::is_httpie_command(input) {
+        PastedCommand::Httpie
+    } else {
+        PastedCommand::Other
+    }
+}
+
 #[cfg(test)]
 mod native_tests {
     use super::*;
 
     fn sample() -> crate::domain::group::ImportedCollection {
         crate::domain::group::ImportedCollection {
-            collection: Collection { id: "c1".into(), name: "C".into(), created_at: 0 },
+            collection: Collection {
+                id: "c1".into(),
+                name: "C".into(),
+                created_at: 0,
+            },
             requests: Vec::new(),
             groups: Vec::new(),
         }

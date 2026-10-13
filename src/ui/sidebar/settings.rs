@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, svg, text, text_input, Space},
     Background, Border, Color, Element, Length,
+    widget::{Space, button, column, container, row, scrollable, svg, text, text_input},
 };
 
 const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
@@ -8,10 +8,9 @@ const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
 use crate::{
     app::UpdateState,
     message::{AppMsg, Message, SettingsMsg, UpdateMsg},
-    ui::theme::{Palette, ThemeSpec, THEMES, TEXT_SM},
+    ui::theme::{Palette, TEXT_SM, THEMES, ThemeSpec},
     ui::tree_label::{tree_label, tree_label_styled},
 };
-
 
 pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
     let header = build_header();
@@ -29,17 +28,35 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
         state.global_test_editor.text().len(),
         state.sidebar_width,
     ));
-    let updates = card(build_updates(&state.update, state.sidebar_width));
+    let updates = card(build_updates(
+        &state.update,
+        state.sidebar_width,
+        state.auto_check_updates,
+    ));
     let shortcuts = card(build_shortcuts(state.sidebar_width));
     let footer = build_footer(state.creator_unlocked, state.sidebar_width);
 
     scrollable(
         column![
-            header, profile, git_identity, appearance, layout, request_defaults,
-            tls, global_scripts, updates, shortcuts, footer
+            header,
+            profile,
+            git_identity,
+            appearance,
+            layout,
+            request_defaults,
+            tls,
+            global_scripts,
+            updates,
+            shortcuts,
+            footer
         ]
         .spacing(6)
-        .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 8.0, left: 8.0 }),
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 8.0,
+            bottom: 8.0,
+            left: 8.0,
+        }),
     )
     .height(Length::Fill)
     .style(crate::ui::theme::hidden_scrollbar)
@@ -64,7 +81,8 @@ fn build_git_identity(name: &str, email: &str) -> Element<'static, Message> {
             .style(crate::ui::styles::field_input),
         Space::new().height(4),
         text("Used for git commits. Saves to the active repo's config.")
-            .size(9).color(Palette::text_subtle()),
+            .size(9)
+            .color(Palette::text_subtle()),
     ]
     .spacing(0)
     .into()
@@ -82,7 +100,8 @@ fn build_request_defaults(timeout_text: &str) -> Element<'static, Message> {
             .style(crate::ui::styles::field_input),
         Space::new().height(4),
         text("Applied to every request. 0 falls back to 30000.")
-            .size(9).color(Palette::text_subtle()),
+            .size(9)
+            .color(Palette::text_subtle()),
     ]
     .spacing(0)
     .into()
@@ -150,7 +169,11 @@ fn tls_toggle(
     .into()
 }
 
-fn build_global_scripts(pre_request_len: usize, test_len: usize, content_width: f32) -> Element<'static, Message> {
+fn build_global_scripts(
+    pre_request_len: usize,
+    test_len: usize,
+    content_width: f32,
+) -> Element<'static, Message> {
     let status = match (pre_request_len > 0, test_len > 0) {
         (false, false) => "Not set up yet".to_owned(),
         (true, false) => "Pre-request configured".to_owned(),
@@ -198,25 +221,44 @@ fn build_header() -> Element<'static, Message> {
             svg(logo_handle).width(36).height(36),
             column![
                 row![
-                    text("Rustman").size(13).color(Palette::text()).font(crate::ui::theme::MONO),
+                    text("Rustman")
+                        .size(13)
+                        .color(Palette::text())
+                        .font(crate::ui::theme::MONO),
                     Space::new().width(5),
-                    container(text(format!("v{}", crate::services::update::current_version())).size(9).color(Palette::text_muted()).font(crate::ui::theme::MONO))
-                        .style(|_| iced::widget::container::Style {
-                            background: Some(Background::Color(Palette::surface_raised())),
-                            border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
-                            ..Default::default()
-                        })
-                        .padding([2, 5]),
+                    container(
+                        text(format!("v{}", crate::services::update::current_version()))
+                            .size(9)
+                            .color(Palette::text_muted())
+                            .font(crate::ui::theme::MONO)
+                    )
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(Background::Color(Palette::surface_raised())),
+                        border: Border {
+                            color: Palette::border(),
+                            width: 1.0,
+                            radius: 4.0.into()
+                        },
+                        ..Default::default()
+                    })
+                    .padding([2, 5]),
                 ]
                 .align_y(iced::Alignment::Center),
-                text("Native API Testing Client").size(9).color(Palette::text_subtle()),
+                text("Native API Testing Client")
+                    .size(9)
+                    .color(Palette::text_subtle()),
             ]
             .spacing(2),
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center),
     )
-    .padding(iced::Padding { top: 12.0, right: 12.0, bottom: 6.0, left: 12.0 })
+    .padding(iced::Padding {
+        top: 12.0,
+        right: 12.0,
+        bottom: 6.0,
+        left: 12.0,
+    })
     .into()
 }
 
@@ -252,17 +294,22 @@ fn build_appearance(theme_idx: usize) -> Element<'static, Message> {
         cards = cards.push(theme_card(spec, is_selected, i));
     }
 
-    column![
-        section_label("APPEARANCE"),
-        field_label("Theme"),
-        cards,
-    ]
-    .spacing(6)
-    .into()
+    column![section_label("APPEARANCE"), field_label("Theme"), cards,]
+        .spacing(6)
+        .into()
 }
 
-fn theme_card(spec: &'static ThemeSpec, is_selected: bool, idx: usize) -> Element<'static, Message> {
-    let preview = row![swatch(spec.background), swatch(spec.surface), swatch(spec.accent)].spacing(3);
+fn theme_card(
+    spec: &'static ThemeSpec,
+    is_selected: bool,
+    idx: usize,
+) -> Element<'static, Message> {
+    let preview = row![
+        swatch(spec.background),
+        swatch(spec.surface),
+        swatch(spec.accent)
+    ]
+    .spacing(3);
 
     let check: Element<'static, Message> = if is_selected {
         text("\u{2713}").size(TEXT_SM).color(spec.accent).into()
@@ -292,7 +339,11 @@ fn theme_card(spec: &'static ThemeSpec, is_selected: bool, idx: usize) -> Elemen
                 Palette::surface_high()
             })),
             border: Border {
-                color: if is_selected { Palette::accent() } else { Palette::border_subtle() },
+                color: if is_selected {
+                    Palette::accent()
+                } else {
+                    Palette::border_subtle()
+                },
                 width: 1.0,
                 radius: 6.0.into(),
             },
@@ -311,7 +362,11 @@ fn swatch(color: Color) -> Element<'static, Message> {
         .height(14)
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(color)),
-            border: Border { color: Color { a: 0.3, ..color }, width: 1.0, radius: 4.0.into() },
+            border: Border {
+                color: Color { a: 0.3, ..color },
+                width: 1.0,
+                radius: 4.0.into(),
+            },
             ..Default::default()
         })
         .into()
@@ -325,13 +380,11 @@ fn build_layout(horizontal: bool, content_width: f32) -> Element<'static, Messag
         let selected = horizontal == is_horizontal;
         buttons.push(
             container(
-                button(
-                    text(label).size(TEXT_SM).color(if selected {
-                        Palette::accent()
-                    } else {
-                        Palette::text_muted()
-                    }),
-                )
+                button(text(label).size(TEXT_SM).color(if selected {
+                    Palette::accent()
+                } else {
+                    Palette::text_muted()
+                }))
                 .on_press(Message::Settings(SettingsMsg::LayoutDirectionToggled))
                 .style(move |_t, s| {
                     use iced::widget::button::Status;
@@ -344,11 +397,19 @@ fn build_layout(horizontal: bool, content_width: f32) -> Element<'static, Messag
                             Palette::surface_high()
                         })),
                         border: Border {
-                            color: if selected { Palette::accent() } else { Palette::border_subtle() },
+                            color: if selected {
+                                Palette::accent()
+                            } else {
+                                Palette::border_subtle()
+                            },
                             width: 1.0,
                             radius: 6.0.into(),
                         },
-                        text_color: if selected { Palette::accent() } else { Palette::text_muted() },
+                        text_color: if selected {
+                            Palette::accent()
+                        } else {
+                            Palette::text_muted()
+                        },
                         ..Default::default()
                     }
                 })
@@ -376,13 +437,27 @@ fn build_layout(horizontal: bool, content_width: f32) -> Element<'static, Messag
     col.into()
 }
 
-fn build_updates(update: &UpdateState, content_width: f32) -> Element<'static, Message> {
+fn build_updates(
+    update: &UpdateState,
+    content_width: f32,
+    auto_check: bool,
+) -> Element<'static, Message> {
     let (status, status_color) = match update {
-        UpdateState::Idle => ("Checked automatically on launch".to_owned(), Palette::text_subtle()),
+        UpdateState::Idle if !auto_check => (
+            "Automatic checks off — use the button below".to_owned(),
+            Palette::text_subtle(),
+        ),
+        UpdateState::Idle => (
+            "Checked automatically on launch".to_owned(),
+            Palette::text_subtle(),
+        ),
         UpdateState::Checking => ("Checking…".to_owned(), Palette::text_muted()),
         UpdateState::Available(info) => (format!("v{} available", info.version), Palette::accent()),
         UpdateState::Installing => ("Downloading update…".to_owned(), Palette::text_muted()),
-        UpdateState::Ready(v) => (format!("v{v} installed — restart to apply"), Palette::SUCCESS),
+        UpdateState::Ready(v) => (
+            format!("v{v} installed — restart to apply"),
+            Palette::SUCCESS,
+        ),
         UpdateState::UpToDate => ("You're on the latest version".to_owned(), Palette::SUCCESS),
         UpdateState::Failed(e) => (format!("Check failed: {e}"), Palette::ERROR),
     };
@@ -392,8 +467,16 @@ fn build_updates(update: &UpdateState, content_width: f32) -> Element<'static, M
         .style(|_t, status| {
             let hov = matches!(status, iced::widget::button::Status::Hovered);
             iced::widget::button::Style {
-                background: Some(Background::Color(if hov { Palette::surface_raised() } else { Palette::surface_high() })),
-                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+                background: Some(Background::Color(if hov {
+                    Palette::surface_raised()
+                } else {
+                    Palette::surface_high()
+                })),
+                border: Border {
+                    color: Palette::border(),
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
                 text_color: Palette::text(),
                 ..Default::default()
             }
@@ -407,6 +490,12 @@ fn build_updates(update: &UpdateState, content_width: f32) -> Element<'static, M
     // with a hover tooltip instead of wrapping the card taller.
     column![
         section_label("UPDATES"),
+        iced::widget::checkbox(auto_check)
+            .label("Check for updates on launch")
+            .on_toggle(move |_| Message::Settings(SettingsMsg::AutoCheckUpdatesToggled))
+            .size(15)
+            .text_size(11)
+            .style(crate::ui::styles::checkbox),
         tree_label_styled(status, 11.0, content_width - 36.0, None, status_color),
         check,
     ]
@@ -415,8 +504,16 @@ fn build_updates(update: &UpdateState, content_width: f32) -> Element<'static, M
 }
 
 fn build_shortcuts(content_width: f32) -> Element<'static, Message> {
-    let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
-    let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt+" };
+    let cmd = if cfg!(target_os = "macos") {
+        "⌘"
+    } else {
+        "Ctrl+"
+    };
+    let alt = if cfg!(target_os = "macos") {
+        "⌥"
+    } else {
+        "Alt+"
+    };
     let pairs: Vec<(String, &str)> = vec![
         (format!("{cmd}T"), "New tab"),
         (format!("{cmd}W"), "Close tab"),
@@ -452,11 +549,18 @@ fn build_shortcuts(content_width: f32) -> Element<'static, Message> {
                 container(
                     row![
                         container(
-                            text(key.clone()).size(10).color(Palette::text()).font(crate::ui::theme::MONO),
+                            text(key.clone())
+                                .size(10)
+                                .color(Palette::text())
+                                .font(crate::ui::theme::MONO),
                         )
                         .style(|_| iced::widget::container::Style {
                             background: Some(Background::Color(Palette::surface_raised())),
-                            border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
+                            border: Border {
+                                color: Palette::border(),
+                                width: 1.0,
+                                radius: 4.0.into()
+                            },
                             ..Default::default()
                         })
                         .padding([2, 5]),
@@ -493,45 +597,56 @@ fn build_footer(creator_unlocked: bool, content_width: f32) -> Element<'static, 
     ]
     .spacing(6);
     if creator_unlocked {
-        col = col.push(container(
-            column![
-                text("Built by Animesh — open to work & freelance gigs.")
-                    .size(10)
-                    .color(Palette::text()),
-                full_link_row(
-                    "GitHub",
-                    "animeshchaudhri".to_owned(),
-                    "https://github.com/animeshchaudhri".to_owned(),
-                    accent,
-                    content_width,
-                ),
-                full_link_row(
-                    "Email",
-                    "ac04@duck.com".to_owned(),
-                    "mailto:ac04@duck.com".to_owned(),
-                    accent,
-                    content_width,
-                ),
-                full_link_row(
-                    "Site",
-                    "animesh.us".to_owned(),
-                    "https://animesh.us".to_owned(),
-                    accent,
-                    content_width,
-                ),
-            ]
-            .spacing(4),
-        )
-        .style(|_| iced::widget::container::Style {
-            background: Some(Background::Color(Palette::surface_high())),
-            border: Border { color: Palette::border_subtle(), width: 1.0, radius: 8.0.into() },
-            ..Default::default()
-        })
-        .padding(10)
-        .width(Length::Fill));
+        col = col.push(
+            container(
+                column![
+                    text("Built by Animesh — open to work & freelance gigs.")
+                        .size(10)
+                        .color(Palette::text()),
+                    full_link_row(
+                        "GitHub",
+                        "animeshchaudhri".to_owned(),
+                        "https://github.com/animeshchaudhri".to_owned(),
+                        accent,
+                        content_width,
+                    ),
+                    full_link_row(
+                        "Email",
+                        "ac04@duck.com".to_owned(),
+                        "mailto:ac04@duck.com".to_owned(),
+                        accent,
+                        content_width,
+                    ),
+                    full_link_row(
+                        "Site",
+                        "animesh.us".to_owned(),
+                        "https://animesh.us".to_owned(),
+                        accent,
+                        content_width,
+                    ),
+                ]
+                .spacing(4),
+            )
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Palette::surface_high())),
+                border: Border {
+                    color: Palette::border_subtle(),
+                    width: 1.0,
+                    radius: 8.0.into(),
+                },
+                ..Default::default()
+            })
+            .padding(10)
+            .width(Length::Fill),
+        );
     }
     container(col)
-        .padding(iced::Padding { top: 4.0, right: 12.0, bottom: 8.0, left: 12.0 })
+        .padding(iced::Padding {
+            top: 4.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 12.0,
+        })
         .into()
 }
 
@@ -549,7 +664,11 @@ fn card_ref<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message
     container(content)
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(bg)),
-            border: Border { color: bd, width: 1.0, radius: 8.0.into() },
+            border: Border {
+                color: bd,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
             ..Default::default()
         })
         .padding(12)
@@ -559,9 +678,17 @@ fn card_ref<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message
 
 fn section_label(label: &'static str) -> Element<'static, Message> {
     container(
-        text(label).size(9).color(Palette::text_subtle()).font(crate::ui::theme::MONO),
+        text(label)
+            .size(9)
+            .color(Palette::text_subtle())
+            .font(crate::ui::theme::MONO),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 })
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    })
     .into()
 }
 
@@ -579,33 +706,60 @@ fn full_link_row(
     accent: Color,
     content_width: f32,
 ) -> Element<'static, Message> {
-    let accent_dim = Color { r: accent.r * 0.62, g: accent.g * 0.62, b: accent.b * 0.63, a: 1.0 };
+    let accent_dim = Color {
+        r: accent.r * 0.62,
+        g: accent.g * 0.62,
+        b: accent.b * 0.63,
+        a: 1.0,
+    };
     let chip_bg = Palette::surface_high();
     let chip_bd = Palette::border_subtle();
     row![
-        container(text(label).size(9).color(Palette::text_subtle()).font(crate::ui::theme::MONO))
-            .style(move |_| iced::widget::container::Style {
-                background: Some(Background::Color(chip_bg)),
-                border: Border { color: chip_bd, width: 1.0, radius: 3.0.into() },
+        container(
+            text(label)
+                .size(9)
+                .color(Palette::text_subtle())
+                .font(crate::ui::theme::MONO)
+        )
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(chip_bg)),
+            border: Border {
+                color: chip_bd,
+                width: 1.0,
+                radius: 3.0.into()
+            },
+            ..Default::default()
+        })
+        .padding([2, 6]),
+        button(tree_label_styled(
+            display,
+            11.0,
+            content_width - 100.0,
+            None,
+            accent
+        ))
+        .on_press(Message::App(AppMsg::OpenUrl(url)))
+        .style(move |_t, s| {
+            let hov = matches!(s, iced::widget::button::Status::Hovered);
+            iced::widget::button::Style {
+                background: if hov {
+                    Some(Background::Color(accent_dim))
+                } else {
+                    None
+                },
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 3.0.into(),
+                },
+                text_color: accent,
                 ..Default::default()
-            })
-            .padding([2, 6]),
-        button(tree_label_styled(display, 11.0, content_width - 100.0, None, accent))
-            .on_press(Message::App(AppMsg::OpenUrl(url)))
-            .style(move |_t, s| {
-                let hov = matches!(s, iced::widget::button::Status::Hovered);
-                iced::widget::button::Style {
-                    background: if hov { Some(Background::Color(accent_dim)) } else { None },
-                    border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 3.0.into() },
-                    text_color: accent,
-                    ..Default::default()
-                }
-            })
-            .padding([1, 4])
-            .width(Length::Fill),
+            }
+        })
+        .padding([1, 4])
+        .width(Length::Fill),
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center)
     .into()
 }
-

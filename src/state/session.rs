@@ -32,8 +32,16 @@ pub struct AppSession {
     /// Pin the handshake to TLS 1.3.
     #[serde(default)]
     pub tls_force_tls13: bool,
+    /// Check GitHub releases on launch (issue #57). Off by default: old
+    /// sessions that predate the setting get the new quiet behavior too.
+    #[serde(default)]
+    pub auto_check_updates: bool,
 }
 
-fn default_timeout_ms() -> u64 { 30_000 }
+fn default_timeout_ms() -> u64 {
+    30_000
+}
 
-fn default_sidebar_width() -> f32 { 200.0 }
+fn default_sidebar_width() -> f32 {
+    200.0
+}

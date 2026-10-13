@@ -1,6 +1,6 @@
 use iced::{
-    widget::{column, container, row, text, Space},
     Element, Length,
+    widget::{Space, column, container, row, text},
 };
 
 use crate::{
@@ -20,9 +20,15 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
 
     column![
-        script_section_header("Pre-request Script", "Runs before each request · env(), set_header()"),
+        script_section_header(
+            "Pre-request Script",
+            "Runs before each request · env(), set_header()"
+        ),
         container(pre_request).height(Length::FillPortion(1)),
-        script_section_header("Test Script", "Runs after response · use test(name, condition)"),
+        script_section_header(
+            "Test Script",
+            "Runs after response · use test(name, condition)"
+        ),
         container(test).height(Length::FillPortion(1)),
     ]
     .spacing(0)

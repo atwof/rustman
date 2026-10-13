@@ -9,7 +9,9 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
         SettingsMsg::ThemeChanged(idx) => {
             state.theme_idx = idx;
             crate::ui::theme::Palette::set_theme_idx(idx);
-            for tab in &mut state.tabs.tabs { tab.sync_editor_themes(); }
+            for tab in &mut state.tabs.tabs {
+                tab.sync_editor_themes();
+            }
         }
         SettingsMsg::GitNameChanged(name) => {
             state.git_user_name = name.clone();
@@ -51,6 +53,9 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
                 state.creator_taps = 0;
                 state.creator_unlocked = !state.creator_unlocked;
             }
+        }
+        SettingsMsg::AutoCheckUpdatesToggled => {
+            state.auto_check_updates = !state.auto_check_updates;
         }
         SettingsMsg::TlsOptionToggled(option) => {
             use crate::message::TlsOption;

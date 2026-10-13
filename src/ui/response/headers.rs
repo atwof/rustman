@@ -1,9 +1,13 @@
 use iced::{
-    widget::{column, container, row, scrollable, text},
     Background, Border, Element, Length,
+    widget::{column, container, row, scrollable, text},
 };
 
-use crate::{message::Message, state::tabs::RequestTabState, ui::{theme::Palette, widgets::kv_table}};
+use crate::{
+    message::Message,
+    state::tabs::RequestTabState,
+    ui::{theme::Palette, widgets::kv_table},
+};
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let Some(resp) = &tab.response else {

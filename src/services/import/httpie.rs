@@ -2,22 +2,34 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::services::curl::{tokenize, CurlForm, ParsedCurl};
+use crate::services::curl::{CurlForm, ParsedCurl, tokenize};
 
 const METHODS: [&str; 7] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 pub fn is_httpie_command(input: &str) -> bool {
-    let lower = input.trim_start().to_lowercase();
+    // Prefix only: callers run this per keystroke, and lowercasing megabytes
+    // of pasted text every time froze input (see url_bar).
+    let head: String = input.trim_start().chars().take(16).collect();
+    let lower = head.to_lowercase();
     ["http ", "http\t", "https ", "https\t", "xh ", "xh\t"]
         .iter()
         .any(|prefix| lower.starts_with(prefix))
 }
 
 pub fn parse(input: &str) -> ParsedCurl {
-    let normalized = input.replace("\\\r\n", " ").replace("\\\n", " ").replace('\r', "");
+    let normalized = input
+        .replace("\\\r\n", " ")
+        .replace("\\\n", " ")
+        .replace('\r', "");
     let trimmed = normalized.trim();
-    let (prog, rest) = trimmed.split_once(char::is_whitespace).unwrap_or((trimmed, ""));
-    let scheme = if prog.eq_ignore_ascii_case("https") { "https" } else { "http" };
+    let (prog, rest) = trimmed
+        .split_once(char::is_whitespace)
+        .unwrap_or((trimmed, ""));
+    let scheme = if prog.eq_ignore_ascii_case("https") {
+        "https"
+    } else {
+        "http"
+    };
 
     let mut method: Option<String> = None;
     let mut url: Option<String> = None;
@@ -112,7 +124,9 @@ fn classify_item(
     json_fields: &mut serde_json::Map<String, Value>,
     form_fields: &mut Vec<CurlForm>,
 ) {
-    let Some((key, sep, value)) = split_item(token) else { return };
+    let Some((key, sep, value)) = split_item(token) else {
+        return;
+    };
     match sep {
         "==" => query.push((key, value)),
         ":=" => {
@@ -121,12 +135,20 @@ fn classify_item(
         }
         "=" => {
             if form_mode {
-                form_fields.push(CurlForm { key, value, is_file: false });
+                form_fields.push(CurlForm {
+                    key,
+                    value,
+                    is_file: false,
+                });
             } else {
                 json_fields.insert(key, Value::String(value));
             }
         }
-        "@" => form_fields.push(CurlForm { key, value, is_file: true }),
+        "@" => form_fields.push(CurlForm {
+            key,
+            value,
+            is_file: true,
+        }),
         ":" => {
             headers.insert(key, value);
         }
@@ -194,8 +216,14 @@ mod tests {
     fn parses_method_url_query_and_headers() {
         let parsed = parse("http GET example.org/search q==rust X-API-Key:secret");
         assert_eq!(parsed.method.as_deref(), Some("GET"));
-        assert_eq!(parsed.url.as_deref(), Some("http://example.org/search?q=rust"));
-        assert_eq!(parsed.header.get("X-API-Key").map(String::as_str), Some("secret"));
+        assert_eq!(
+            parsed.url.as_deref(),
+            Some("http://example.org/search?q=rust")
+        );
+        assert_eq!(
+            parsed.header.get("X-API-Key").map(String::as_str),
+            Some("secret")
+        );
     }
 
     #[test]

@@ -2,8 +2,8 @@
 
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::value::Value;
@@ -70,7 +70,9 @@ pub(crate) fn aes_decrypt(ciphertext_b64: &str, key: &str) -> Value {
     let cipher = Aes256Gcm::new(&derive_key(key));
     let nonce = Nonce::from_slice(nonce_bytes);
     match cipher.decrypt(nonce, ciphertext) {
-        Ok(plaintext) => String::from_utf8(plaintext).map(Value::String).unwrap_or(Value::Null),
+        Ok(plaintext) => String::from_utf8(plaintext)
+            .map(Value::String)
+            .unwrap_or(Value::Null),
         Err(_) => Value::Null,
     }
 }

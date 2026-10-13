@@ -15,15 +15,18 @@
 //!   would push the row out sideways instead of clipping.
 //! - overflowing labels render pre-truncated with a "…" (measured to fit the
 //!   same budget), so the cut looks deliberate rather than sliced mid-glyph.
+//!
+//! A third keeps huge names cheap: measuring is per-glyph font lookups every
+//! frame, so names past `LABEL_RENDER_LIMIT` render truncated without ever
+//! being measured, and hover text is capped at `HOVER_TIP_BYTES` — tooltips
+//! shape their whole content, and megabytes there would freeze on hover.
 
-use iced::{widget::text, Element, Length};
+use iced::{Element, Length, widget::text};
 
+use crate::consts::{HOVER_TIP_BYTES, LABEL_RENDER_LIMIT, OVERFLOW_SLACK_PX};
 use crate::message::Message;
+use crate::services::format::head_capped;
 use crate::ui::theme::Palette;
-
-/// Only pop the tooltip when the label overshoots by more than this: kills
-/// boundary flicker where estimate and reality disagree by a few px.
-const OVERFLOW_SLACK_PX: f32 = 8.0;
 
 /// Fallback advance for glyphs missing from the font, ~the measured mean.
 const FALLBACK_ADVANCE_EM: f32 = 0.55;
@@ -34,8 +37,7 @@ fn face() -> Option<&'static ttf_parser::Face<'static>> {
     static FACE: std::sync::OnceLock<Option<ttf_parser::Face<'static>>> =
         std::sync::OnceLock::new();
     FACE.get_or_init(|| {
-        let data: &'static [u8] =
-            include_bytes!("../../assets/fonts/NotoSans-Regular.ttf");
+        let data: &'static [u8] = include_bytes!("../../assets/fonts/NotoSans-Regular.ttf");
         ttf_parser::Face::parse(data, 0).ok()
     })
     .as_ref()
@@ -74,19 +76,41 @@ fn est_text_width(name: &str, size_px: f32) -> f32 {
 /// `name` cut to fit `budget_px` at `size_px`, with a trailing "…" when
 /// anything was cut. Always whole chars (never splits UTF-8). A budget that
 /// fits nothing still yields "…" rather than an empty label.
+///
+/// Huge names skip the fits-check below (which scans the whole name):
+/// past `LABEL_RENDER_LIMIT` nothing fits a sidebar budget, and the cutter
+/// itself exits early once over budget, so unbounded input stays bounded.
 pub(crate) fn truncate_to_fit(name: &str, size_px: f32, budget_px: f32, mono: bool) -> String {
+    if name.len() > LABEL_RENDER_LIMIT {
+        return cut_to_budget(name, size_px, budget_px, mono);
+    }
     if glyph_widths(name, size_px, mono).iter().sum::<f32>() <= budget_px {
         return name.to_owned();
     }
+    cut_to_budget(name, size_px, budget_px, mono)
+}
+
+/// Cut `name` to `budget_px`, streaming advances so the scan stops as soon
+/// as the budget is exceeded — a megabyte name costs a row's worth of
+/// lookups, not megabytes.
+fn cut_to_budget(name: &str, size_px: f32, budget_px: f32, mono: bool) -> String {
     let f = face();
-    let ell_adv = if mono { size_px * 0.6 } else { char_advance(f, '…', size_px) };
+    let ell_adv = if mono {
+        size_px * 0.6
+    } else {
+        char_advance(f, '…', size_px)
+    };
     if budget_px <= 0.0 {
         return "…".to_owned();
     }
-    let widths = glyph_widths(name, size_px, mono);
     let mut used = 0.0;
     let mut end = 0;
-    for ((i, c), adv) in name.char_indices().zip(widths.iter()) {
+    for (i, c) in name.char_indices() {
+        let adv = if mono {
+            size_px * 0.6
+        } else {
+            char_advance(f, c, size_px)
+        };
         if used + adv + ell_adv > budget_px {
             break;
         }
@@ -97,6 +121,18 @@ pub(crate) fn truncate_to_fit(name: &str, size_px: f32, budget_px: f32, mono: bo
         return name.to_owned();
     }
     let mut out = name[..end].to_owned();
+    out.push('…');
+    out
+}
+
+/// Hover text for a label: capped, since tooltips render their whole
+/// content and an uncapped megabyte name would freeze shaping on hover.
+fn tip_text(name: &str) -> String {
+    let head = head_capped(name, HOVER_TIP_BYTES);
+    if head.len() >= name.len() {
+        return name.to_owned();
+    }
+    let mut out = head.to_owned();
     out.push('…');
     out
 }
@@ -124,29 +160,38 @@ pub fn tree_label_styled(
     color: iced::Color,
 ) -> Element<'static, Message> {
     let mono = font.is_some();
-    let mut label = text(name.clone()).size(size).color(color).width(Length::Fill).wrapping(
-        iced_core::text::Wrapping::None,
-    );
-    if let Some(font) = font {
-        label = label.font(font);
-    }
-    if glyph_widths(&name, size, mono).iter().sum::<f32>() > avail_px + OVERFLOW_SLACK_PX {
-        let short = truncate_to_fit(&name, size, avail_px, mono);
-        let mut tip = text(short).size(size).color(color).width(Length::Fill).wrapping(
-            iced_core::text::Wrapping::None,
-        );
+    // Labels are measured on every frame: names past the render limit skip
+    // measuring and go straight to truncation, so a pathological name can
+    // never cost megabytes of font lookups per frame.
+    let huge = name.len() > LABEL_RENDER_LIMIT;
+    if !huge && glyph_widths(&name, size, mono).iter().sum::<f32>() <= avail_px + OVERFLOW_SLACK_PX
+    {
+        let mut label = text(name)
+            .size(size)
+            .color(color)
+            .width(Length::Fill)
+            .wrapping(iced_core::text::Wrapping::None);
         if let Some(font) = font {
-            tip = tip.font(font);
+            label = label.font(font);
         }
-        iced::widget::tooltip(
-            tip,
-            text(name).size(12).color(Palette::text()),
-            iced::widget::tooltip::Position::FollowCursor,
-        )
-        .into()
-    } else {
-        label.into()
+        return label.into();
     }
+    let short = truncate_to_fit(&name, size, avail_px, mono);
+    let mut tip = text(short)
+        .size(size)
+        .color(color)
+        .width(Length::Fill)
+        .wrapping(iced_core::text::Wrapping::None);
+    if let Some(font) = font {
+        tip = tip.font(font);
+    }
+    let tip_text = tip_text(&name);
+    iced::widget::tooltip(
+        tip,
+        text(tip_text).size(12).color(Palette::text()),
+        iced::widget::tooltip::Position::FollowCursor,
+    )
+    .into()
 }
 
 #[cfg(test)]
@@ -214,5 +259,25 @@ mod width_tests {
         assert_eq!(truncate_to_fit(name, 10.0, 40.0, true), name);
         let cut = truncate_to_fit(name, 10.0, 30.0, true);
         assert!(cut.ends_with('…'), "expected ellipsis, got {cut:?}");
+    }
+
+    #[test]
+    fn megabyte_names_render_bounded() {
+        // The pathological case behind the label/tooltip freeze: measuring
+        // and shaping must never see the whole name.
+        let name = "x".repeat(5_000_000);
+        let cut = truncate_to_fit(&name, 12.0, 200.0, false);
+        assert!(
+            cut.len() < 1000,
+            "label must be budget-cut, got {}",
+            cut.len()
+        );
+        assert!(cut.ends_with('…'));
+        let tip = tip_text(&name);
+        assert!(
+            tip.len() <= HOVER_TIP_BYTES + 4,
+            "tip must be capped, got {}",
+            tip.len()
+        );
     }
 }

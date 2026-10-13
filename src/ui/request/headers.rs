@@ -1,13 +1,17 @@
 use iced::{
-    widget::{button, checkbox, column, container, pick_list, row, scrollable, text, text_input},
     Background, Element, Length,
+    widget::{button, checkbox, column, container, pick_list, row, scrollable, text},
 };
 
 use crate::{
     domain::request::KeyValue,
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{icons, styles, theme::{Palette, TEXT_SM, TEXT_XS}, widgets::kv_table},
+    ui::{
+        icons, styles,
+        theme::{Palette, TEXT_SM, TEXT_XS},
+        widgets::kv_table,
+    },
 };
 
 const CONTENT_TYPE_SUGGESTIONS: &[&str] = &[
@@ -61,22 +65,35 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
     let header = row![
         container(text("").size(1)).width(24),
         container(text("").size(1)).width(24),
-        text("Key").size(TEXT_SM).color(Palette::text_muted()).width(Length::Fill),
-        text("Value").size(TEXT_SM).color(Palette::text_muted()).width(Length::Fill),
+        text("Key")
+            .size(TEXT_SM)
+            .color(Palette::text_muted())
+            .width(Length::Fill),
+        text("Value")
+            .size(TEXT_SM)
+            .color(Palette::text_muted())
+            .width(Length::Fill),
         container(text("").size(1)).width(28),
     ]
     .spacing(6)
-    .padding(iced::Padding { top: 6.0, right: 10.0, bottom: 6.0, left: 10.0 });
+    .padding(iced::Padding {
+        top: 6.0,
+        right: 10.0,
+        bottom: 6.0,
+        left: 10.0,
+    });
 
     let header = container(header)
         .style(crate::ui::styles::section_header)
         .width(Length::Fill);
 
-    let footer = || kv_table::table_footer(
-        Message::Request(RequestMsg::HeaderAdded),
-        "Add header",
-        Message::Request(RequestMsg::HeadersBulkToggle),
-    );
+    let footer = || {
+        kv_table::table_footer(
+            Message::Request(RequestMsg::HeaderAdded),
+            "Add header",
+            Message::Request(RequestMsg::HeadersBulkToggle),
+        )
+    };
 
     if items.is_empty() {
         return column![header, footer()].spacing(0).into();
@@ -86,7 +103,11 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
 
     for (i, item) in items.iter().enumerate() {
         let is_even = i % 2 == 0;
-        let bg = if is_even { Palette::row_even() } else { Palette::row_odd() };
+        let bg = if is_even {
+            Palette::row_even()
+        } else {
+            Palette::row_odd()
+        };
         let is_ct = is_content_type_key(&item.key);
 
         let value_widget: Element<Message> = if is_ct {
@@ -100,20 +121,19 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                 .copied()
                 .collect();
             if suggestions.is_empty() {
-                text_input("value", &item.value)
-                    .on_input(move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)))
-                    .size(TEXT_SM)
-                    .padding([5, 6])
-                    .width(Length::Fill)
-                    .style(styles::cell_input)
-                    .into()
+                super::cell::text_cell(
+                    "value",
+                    &item.value,
+                    TEXT_SM,
+                    [5, 6],
+                    Length::Fill,
+                    move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)),
+                )
             } else {
                 let current = selected.unwrap_or("");
-                pick_list(
-                    suggestions,
-                    Some(current),
-                    move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s.to_owned())),
-                )
+                pick_list(suggestions, Some(current), move |s| {
+                    Message::Request(RequestMsg::HeaderValueChanged(i, s.to_owned()))
+                })
                 .text_size(TEXT_SM)
                 .padding([5, 6])
                 .width(Length::Fill)
@@ -121,13 +141,14 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                 .into()
             }
         } else {
-            text_input("value", &item.value)
-                .on_input(move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)))
-                .size(TEXT_SM)
-                .padding([5, 6])
-                .width(Length::Fill)
-                .style(styles::cell_input)
-                .into()
+            super::cell::text_cell(
+                "value",
+                &item.value,
+                TEXT_SM,
+                [5, 6],
+                Length::Fill,
+                move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)),
+            )
         };
 
         let row_el = container(
@@ -142,12 +163,9 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                     .color(Palette::text_subtle())
                     .font(crate::ui::theme::MONO)
                     .width(20),
-                text_input("key", &item.key)
-                    .on_input(move |s| Message::Request(RequestMsg::HeaderKeyChanged(i, s)))
-                    .size(TEXT_SM)
-                    .padding([5, 6])
-                    .width(Length::Fill)
-                    .style(styles::cell_input),
+                super::cell::text_cell("key", &item.key, TEXT_SM, [5, 6], Length::Fill, move |s| {
+                    Message::Request(RequestMsg::HeaderKeyChanged(i, s))
+                },),
                 value_widget,
                 button(icons::close().size(TEXT_XS).color(Palette::text_subtle()))
                     .on_press(Message::Request(RequestMsg::HeaderRemoved(i)))
@@ -155,7 +173,12 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                     .padding([2, 6]),
             ]
             .spacing(4)
-            .padding(iced::Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 10.0 })
+            .padding(iced::Padding {
+                top: 4.0,
+                right: 8.0,
+                bottom: 4.0,
+                left: 10.0,
+            })
             .align_y(iced::Alignment::Center),
         )
         .style(move |_| iced::widget::container::Style {

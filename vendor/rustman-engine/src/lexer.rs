@@ -28,9 +28,9 @@ pub enum Token {
     Plus,
     Minus,
     Bang,
-    Eq,       // =
-    EqEq,     // ==
-    NotEq,    // !=
+    Eq,    // =
+    EqEq,  // ==
+    NotEq, // !=
     Lt,
     Gt,
     LtEq,
@@ -206,7 +206,10 @@ fn read_string(
     loop {
         match chars.get(i) {
             None => {
-                return Err(LexError { message: "unterminated string literal".to_owned(), line });
+                return Err(LexError {
+                    message: "unterminated string literal".to_owned(),
+                    line,
+                });
             }
             Some('"') => {
                 i += 1;

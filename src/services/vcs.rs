@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use git2::{
-    build::CheckoutBuilder,
     BranchType, DiffFormat, IndexAddOption, Repository, Signature, Sort, StatusOptions,
+    build::CheckoutBuilder,
 };
 use serde_json;
 
@@ -128,7 +128,8 @@ pub fn set_identity(data_dir: &PathBuf, name: &str, email: &str) -> Result<(), S
     let repo = open_at(data_dir)?;
     let mut cfg = repo.config().map_err(|e| e.to_string())?;
     cfg.set_str("user.name", name).map_err(|e| e.to_string())?;
-    cfg.set_str("user.email", email).map_err(|e| e.to_string())?;
+    cfg.set_str("user.email", email)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -166,7 +167,10 @@ pub fn status(data_dir: &PathBuf) -> Result<RepoStatus, String> {
             "changed"
         };
         if let Ok(path) = entry.path() {
-            changes.push(FileChange { path: path.to_owned(), state: state.to_owned() });
+            changes.push(FileChange {
+                path: path.to_owned(),
+                state: state.to_owned(),
+            });
         }
     }
 
@@ -181,12 +185,20 @@ pub fn status(data_dir: &PathBuf) -> Result<RepoStatus, String> {
         .and_then(|r| r.url().ok().map(|s| s.to_owned()));
     let (ahead, behind) = ahead_behind(&repo, &branch).unwrap_or((0, 0));
 
-    Ok(RepoStatus { branch, changes, remote_url, ahead, behind })
+    Ok(RepoStatus {
+        branch,
+        changes,
+        remote_url,
+        ahead,
+        behind,
+    })
 }
 
 fn ahead_behind(repo: &Repository, branch: &str) -> Option<(usize, usize)> {
     let local = repo.refname_to_id(&format!("refs/heads/{branch}")).ok()?;
-    let upstream = repo.refname_to_id(&format!("refs/remotes/origin/{branch}")).ok()?;
+    let upstream = repo
+        .refname_to_id(&format!("refs/remotes/origin/{branch}"))
+        .ok()?;
     repo.graph_ahead_behind(local, upstream).ok()
 }
 
@@ -261,13 +273,18 @@ pub fn working_diff(data_dir: &PathBuf) -> Result<String, String> {
 
 pub fn branches(data_dir: &PathBuf) -> Result<Vec<BranchInfo>, String> {
     let repo = open_at(data_dir)?;
-    let iter = repo.branches(Some(BranchType::Local)).map_err(|e| e.to_string())?;
+    let iter = repo
+        .branches(Some(BranchType::Local))
+        .map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for item in iter {
         let (branch, _) = item.map_err(|e| e.to_string())?;
         let is_head = branch.is_head();
         if let Ok(Some(name)) = branch.name() {
-            out.push(BranchInfo { name: name.to_owned(), is_head });
+            out.push(BranchInfo {
+                name: name.to_owned(),
+                is_head,
+            });
         }
     }
     Ok(out)
@@ -280,7 +297,8 @@ pub fn create_branch(data_dir: &PathBuf, name: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .peel_to_commit()
         .map_err(|e| e.to_string())?;
-    repo.branch(name, &commit, false).map_err(|e| e.to_string())?;
+    repo.branch(name, &commit, false)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -290,7 +308,8 @@ pub fn checkout_branch(data_dir: &PathBuf, name: &str) -> Result<(), String> {
     let object = repo.revparse_single(&refname).map_err(|e| e.to_string())?;
     let mut checkout = CheckoutBuilder::new();
     checkout.force();
-    repo.checkout_tree(&object, Some(&mut checkout)).map_err(|e| e.to_string())?;
+    repo.checkout_tree(&object, Some(&mut checkout))
+        .map_err(|e| e.to_string())?;
     repo.set_head(&refname).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -324,13 +343,17 @@ pub fn read_commit_collections(
 
 pub fn remote_url(data_dir: &PathBuf) -> Option<String> {
     let repo = open_at(data_dir).ok()?;
-    repo.find_remote("origin").ok().and_then(|r| r.url().ok().map(|s| s.to_owned()))
+    repo.find_remote("origin")
+        .ok()
+        .and_then(|r| r.url().ok().map(|s| s.to_owned()))
 }
 
 pub fn set_remote(data_dir: &PathBuf, url: &str) -> Result<(), String> {
     let repo = open_at(data_dir)?;
     match repo.find_remote("origin") {
-        Ok(_) => repo.remote_set_url("origin", url).map_err(|e| e.to_string())?,
+        Ok(_) => repo
+            .remote_set_url("origin", url)
+            .map_err(|e| e.to_string())?,
         Err(_) => {
             repo.remote("origin", url).map_err(|e| e.to_string())?;
         }
@@ -357,7 +380,6 @@ pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     if dest.join(".git").is_dir() {
-
         return Ok(());
     }
     let output = std::process::Command::new("git")
@@ -384,7 +406,11 @@ pub fn push(data_dir: &PathBuf) -> Result<(), String> {
 pub fn pull(data_dir: &PathBuf) -> Result<String, String> {
     let output = run_git(data_dir, &["pull", "--ff-only"])?;
     let trimmed = output.trim();
-    Ok(if trimmed.is_empty() { "Up to date".to_owned() } else { trimmed.to_owned() })
+    Ok(if trimmed.is_empty() {
+        "Up to date".to_owned()
+    } else {
+        trimmed.to_owned()
+    })
 }
 
 pub fn write_working_tree(
@@ -399,7 +425,10 @@ pub fn write_working_tree(
         .ok_or_else(|| "repository has no working directory".to_owned())?
         .to_path_buf();
 
-    let current: HashSet<String> = collections.iter().map(|c| c.collection.id.clone()).collect();
+    let current: HashSet<String> = collections
+        .iter()
+        .map(|c| c.collection.id.clone())
+        .collect();
     if let Ok(entries) = std::fs::read_dir(&workdir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -423,8 +452,11 @@ pub fn write_working_tree(
             groups: imported.groups.clone(),
         };
         let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-        std::fs::write(workdir.join(format!("{}.json", imported.collection.id)), json)
-            .map_err(|e| e.to_string())?;
+        std::fs::write(
+            workdir.join(format!("{}.json", imported.collection.id)),
+            json,
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     let global_path = workdir.join(GLOBAL_SCRIPT_FILE);

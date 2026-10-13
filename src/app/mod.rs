@@ -74,6 +74,12 @@ pub struct AppState {
     pub git_clone_url: String,
     pub curl_modal_open: bool,
     pub curl_modal_command: String,
+    /// Import-command dialog: clipboard/file import that bypasses text
+    /// widgets entirely (pasting megabytes into an input freezes iced's
+    /// per-grapheme shaping for minutes — see `URL_GUARD_LEN`).
+    pub import_dialog_open: bool,
+    /// A background command parse is running (see `ImportCommandParsed`).
+    pub importing: bool,
     pub git_user_name: String,
     pub git_user_email: String,
     pub git_history_search: String,
@@ -89,6 +95,9 @@ pub struct AppState {
     pub ui_scale: f64,
     /// Auto-update progress for the banner + settings panel.
     pub update: UpdateState,
+    /// Check GitHub releases automatically on launch (issue #57). Off means
+    /// zero boot-time network: the manual Check button still works.
+    pub auto_check_updates: bool,
     /// Default request timeout in ms, applied to every request (used to be
     /// configurable per-tab; moved to a single global setting).
     pub default_timeout_ms: u64,
@@ -238,14 +247,10 @@ fn view(state: &AppState) -> Element<'_, Message> {
     crate::ui::layout::view(state)
 }
 
-
 fn app_icon() -> Option<iced::window::Icon> {
     const ICON_BYTES: &[u8] = include_bytes!("../../public/icon.png");
 
-    match iced::window::icon::from_file_data(
-        ICON_BYTES,
-        Some(image::ImageFormat::Png),
-    ) {
+    match iced::window::icon::from_file_data(ICON_BYTES, Some(image::ImageFormat::Png)) {
         Ok(icon) => Some(icon),
         Err(err) => {
             eprintln!("app icon: could not build an icon from public/icon.png: {err}");

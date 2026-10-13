@@ -1,10 +1,15 @@
 use iced::{
-    widget::{container, row, text, Space},
     Alignment, Background, Border, Color, Element, Length,
+    widget::{Space, container, row, text},
 };
 
 use crate::{
-    domain::response::HttpResponse, message::Message, ui::{icons, theme::{Palette, RESPONSE_BODY_PADDING, TEXT_SM, TEXT_XS}},
+    domain::response::HttpResponse,
+    message::Message,
+    ui::{
+        icons,
+        theme::{Palette, RESPONSE_BODY_PADDING, TEXT_SM, TEXT_XS},
+    },
 };
 
 pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
@@ -12,7 +17,9 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
         return container(
             row![
                 status_pill("ERR".to_owned(), Palette::ERROR, Palette::error_soft()),
-                text("Request failed").size(TEXT_SM).color(Palette::text_muted()),
+                text("Request failed")
+                    .size(TEXT_SM)
+                    .color(Palette::text_muted()),
                 Space::new().width(Length::Fill),
             ]
             .spacing(10)
@@ -38,8 +45,14 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
     container(
         row![
             status_pill(status_label, pill_fg, pill_bg),
-            meta_chip(icons::timer().size(11).color(Palette::text_subtle()), dur_str),
-            meta_chip(icons::zap().size(11).color(Palette::text_subtle()), size_str),
+            meta_chip(
+                icons::timer().size(11).color(Palette::text_subtle()),
+                dur_str
+            ),
+            meta_chip(
+                icons::zap().size(11).color(Palette::text_subtle()),
+                size_str
+            ),
             Space::new().width(Length::Fill),
         ]
         .spacing(8)
@@ -72,12 +85,14 @@ fn status_colors(code: u16) -> (Color, Color) {
 fn status_pill(label: String, fg: Color, bg: Color) -> Element<'static, Message> {
     container(
         row![
-            container(Space::new().width(7).height(7))
-                .style(move |_| container::Style {
-                    background: Some(Background::Color(fg)),
-                    border: Border { radius: 4.0.into(), ..Default::default() },
+            container(Space::new().width(7).height(7)).style(move |_| container::Style {
+                background: Some(Background::Color(fg)),
+                border: Border {
+                    radius: 4.0.into(),
                     ..Default::default()
-                }),
+                },
+                ..Default::default()
+            }),
             text(label)
                 .size(TEXT_SM)
                 .color(fg)
@@ -88,7 +103,10 @@ fn status_pill(label: String, fg: Color, bg: Color) -> Element<'static, Message>
     )
     .style(move |_| iced::widget::container::Style {
         background: Some(Background::Color(bg)),
-        border: Border { radius: 100.0.into(), ..Default::default() },
+        border: Border {
+            radius: 100.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .padding([5, 12])
@@ -99,7 +117,10 @@ fn meta_chip(icon: iced::widget::Text<'static>, label: String) -> Element<'stati
     container(
         row![
             icon,
-            text(label).size(TEXT_XS).color(Palette::text_muted()).font(crate::ui::theme::MONO),
+            text(label)
+                .size(TEXT_XS)
+                .color(Palette::text_muted())
+                .font(crate::ui::theme::MONO),
         ]
         .spacing(5)
         .align_y(Alignment::Center),

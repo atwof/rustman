@@ -16,9 +16,7 @@ fn main() {
     {
         let icon = std::path::Path::new("public/icon.ico");
         if !icon.exists() {
-            println!(
-                "cargo:warning=public/icon.ico missing; the executable will have no icon"
-            );
+            println!("cargo:warning=public/icon.ico missing; the executable will have no icon");
             return;
         }
         let mut res = winresource::WindowsResource::new();

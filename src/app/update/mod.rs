@@ -17,8 +17,28 @@ mod updater;
 mod ws;
 
 pub(crate) fn update(state: &mut AppState, message: Message) -> Task<Message> {
+    let dirty = marks_session_dirty(&message);
+    let task = dispatch(state, message);
 
-    let marks_dirty = !matches!(
+    if dirty {
+        state.session_dirty = true;
+    }
+    task
+}
+
+/// Whether `message` changes persisted session state. Transient UI (autosave
+/// ticks, spinner frames, read-only viewer navigation) must not schedule a
+/// save: saving serializes every tab, so marking a selection scroll dirty
+/// would rewrite a multi-megabyte form value for no reason — and
+/// `persist_session` clears the flag, so false positives also keep the
+/// autosave subscription alive instead of letting an idle app go quiet.
+/// Expanded editors DO dirty on content edits (their write-back mutates the
+/// snapshot); navigation/selection/search inside them does not.
+pub(crate) fn marks_session_dirty(message: &Message) -> bool {
+    if let Message::Request(crate::message::RequestMsg::FormValueEdited(_, editor_msg)) = message {
+        return crate::state::tabs::editor_message_edits_content(editor_msg);
+    }
+    !matches!(
         message,
         Message::App(
             crate::message::AppMsg::AutoSaveSession
@@ -27,14 +47,21 @@ pub(crate) fn update(state: &mut AppState, message: Message) -> Task<Message> {
                 | crate::message::AppMsg::HtmlPreviewTick
                 | crate::message::AppMsg::HtmlPanelBounds { .. }
         )
-    );
-
-    let task = dispatch(state, message);
-
-    if marks_dirty {
-        state.session_dirty = true;
-    }
-    task
+        // Expanded editors are transient UI: paging or expanding never
+        // touches the persisted snapshot. A rejected oversized paste changes
+        // nothing either — the old URL is kept. The import dialog chrome is
+        // likewise UI-only until a parse lands.
+        | Message::Request(
+            crate::message::RequestMsg::FormValueExpandToggled(_)
+                | crate::message::RequestMsg::FormValuePagePrev(_)
+                | crate::message::RequestMsg::FormValuePageNext(_)
+                | crate::message::RequestMsg::OversizedUrlRejected(_)
+                | crate::message::RequestMsg::OpenImportDialog
+                | crate::message::RequestMsg::CloseImportDialog
+                | crate::message::RequestMsg::ImportFromClipboard
+                | crate::message::RequestMsg::ImportFromFile
+        )
+    )
 }
 
 fn dispatch(state: &mut AppState, message: Message) -> Task<Message> {
@@ -69,4 +96,31 @@ fn handle_layout(state: &mut AppState, msg: LayoutMsg) -> Task<Message> {
         }
     }
     Task::none()
+}
+
+#[cfg(test)]
+mod dirty_tests {
+    use super::*;
+    use crate::message::RequestMsg;
+
+    #[test]
+    fn viewer_navigation_never_dirties_but_edits_do() {
+        use iced_code_editor::Message as EditorMessage;
+
+        assert!(!marks_session_dirty(&Message::Request(
+            RequestMsg::FormValueExpandToggled(0)
+        )));
+        assert!(!marks_session_dirty(&Message::Request(
+            RequestMsg::FormValuePageNext(0)
+        )));
+        assert!(!marks_session_dirty(&Message::Request(
+            RequestMsg::FormValueEdited(0, EditorMessage::SelectAll)
+        )));
+        assert!(marks_session_dirty(&Message::Request(
+            RequestMsg::FormValueEdited(0, EditorMessage::CharacterInput('x'))
+        )));
+        assert!(marks_session_dirty(&Message::Request(
+            RequestMsg::UrlChanged("https://x.test".to_owned())
+        )));
+    }
 }

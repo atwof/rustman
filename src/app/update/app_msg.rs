@@ -1,7 +1,7 @@
 use iced::Task;
 
-use crate::app::session::persist_session;
 use crate::app::AppState;
+use crate::app::session::persist_session;
 use crate::domain::history::HistoryEntry;
 use crate::jobs::JobKind;
 use crate::message::{AppMsg, FormatTarget, Message};
@@ -94,20 +94,24 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 let mut test_logs = Vec::new();
                 let mut test_error = None;
 
-                for (label, script) in
-                    [("Global test script", &global_test_script), ("Test script", &request_test_script)]
-                {
+                for (label, script) in [
+                    ("Global test script", &global_test_script),
+                    ("Test script", &request_test_script),
+                ] {
                     if script.trim().is_empty() {
                         continue;
                     }
                     let active_env = state.active_env().cloned();
-                    let host_input = state
-                        .tabs
-                        .tabs
-                        .iter()
-                        .find(|t| t.id == tab_id)
-                        .map(|t| crate::app::scripting::test_host_input(t, active_env.as_ref(), &result.response));
-                    let Some(host_input) = host_input else { continue };
+                    let host_input = state.tabs.tabs.iter().find(|t| t.id == tab_id).map(|t| {
+                        crate::app::scripting::test_host_input(
+                            t,
+                            active_env.as_ref(),
+                            &result.response,
+                        )
+                    });
+                    let Some(host_input) = host_input else {
+                        continue;
+                    };
                     match crate::app::scripting::run_and_apply(state, script, host_input) {
                         Ok(applied) => {
                             test_results.extend(applied.test_results);
@@ -211,7 +215,11 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 }
 
                 if state.parsed_cache.inner_get_by_hash(body_hash).is_some() {
-                    let cached_clone = state.parsed_cache.inner_get_by_hash(body_hash).unwrap().clone();
+                    let cached_clone = state
+                        .parsed_cache
+                        .inner_get_by_hash(body_hash)
+                        .unwrap()
+                        .clone();
                     let use_tabs = state
                         .tabs
                         .tabs
@@ -274,11 +282,19 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 );
             }
         }
-        AppMsg::ViewerReady { generation, tab_id, content_text, parsed_json } => {
+        AppMsg::ViewerReady {
+            generation,
+            tab_id,
+            content_text,
+            parsed_json,
+        } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                 if tab.jobs.is_current(JobKind::Parse, generation) {
                     let is_json = parsed_json.is_some();
-                    if let (Some(parsed), Some(raw_body)) = (parsed_json.as_deref(), tab.response.as_ref().map(|r| r.body.as_str())) {
+                    if let (Some(parsed), Some(raw_body)) = (
+                        parsed_json.as_deref(),
+                        tab.response.as_ref().map(|r| r.body.as_str()),
+                    ) {
                         state.parsed_cache.insert(raw_body, parsed.clone());
                     }
                     tab.parsed_json = parsed_json.map(|b| *b);
@@ -291,14 +307,24 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 }
             }
         }
-        AppMsg::SpreadsheetPreviewReady { generation, tab_id, result } => {
+        AppMsg::SpreadsheetPreviewReady {
+            generation,
+            tab_id,
+            result,
+        } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id)
                 && tab.jobs.is_current(JobKind::Parse, generation)
             {
                 tab.response_preview = crate::state::tabs::ResponsePreview::Spreadsheet(result);
             }
         }
-        AppMsg::PdfPagePreviewReady { generation, tab_id, page_index, page_count, result } => {
+        AppMsg::PdfPagePreviewReady {
+            generation,
+            tab_id,
+            page_index,
+            page_count,
+            result,
+        } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id)
                 && tab.jobs.is_current(JobKind::Parse, generation)
             {
@@ -308,13 +334,12 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                     }
                     Err(_) => None,
                 };
-                tab.response_preview = crate::state::tabs::ResponsePreview::Pdf(
-                    crate::state::tabs::PdfPreviewState {
+                tab.response_preview =
+                    crate::state::tabs::ResponsePreview::Pdf(crate::state::tabs::PdfPreviewState {
                         page_count,
                         current_page: page_index,
                         current_image,
-                    },
-                );
+                    });
             }
         }
         AppMsg::HtmlPreviewTick => {
@@ -337,18 +362,20 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 .map(|r| std::sync::Arc::from(r.body.as_str()))
                 .unwrap_or_else(|| std::sync::Arc::from(""));
             let ui_scale = state.ui_scale;
-            return crate::ui::widgets::bounds_probe::find(crate::ui::response::body::HTML_PANEL_ID)
-                .map(move |bounds| {
-                    Message::App(AppMsg::HtmlPanelBounds {
-                        // iced reports bounds in its own scaled space; `wry`
-                        // expects window-logical pixels. Convert here so the
-                        // native child window lands in the right place at any
-                        // UI zoom (this is what broke HTML preview on scaled
-                        // Windows displays).
-                        bounds: crate::services::webview::scaled_bounds(bounds, ui_scale),
-                        html: html.clone(),
-                    })
-                });
+            return crate::ui::widgets::bounds_probe::find(
+                crate::ui::response::body::HTML_PANEL_ID,
+            )
+            .map(move |bounds| {
+                Message::App(AppMsg::HtmlPanelBounds {
+                    // iced reports bounds in its own scaled space; `wry`
+                    // expects window-logical pixels. Convert here so the
+                    // native child window lands in the right place at any
+                    // UI zoom (this is what broke HTML preview on scaled
+                    // Windows displays).
+                    bounds: crate::services::webview::scaled_bounds(bounds, ui_scale),
+                    html: html.clone(),
+                })
+            });
         }
         AppMsg::HtmlPanelBounds { bounds, html } => {
             if crate::services::webview::exists() {
@@ -361,14 +388,20 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 crate::services::webview::ensure_created(id, bounds, html.to_string())
             });
         }
-        AppMsg::Formatted { generation, tab_id, target, text } => {
+        AppMsg::Formatted {
+            generation,
+            tab_id,
+            target,
+            text,
+        } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                 if tab.jobs.is_current(JobKind::Format, generation) {
                     match target {
                         FormatTarget::RequestBody => {
                             tab.modified = true;
-                            return tab.replace_body_text(text)
-                                .map(|m| Message::Request(crate::message::RequestMsg::BodyEdited(m)));
+                            return tab.replace_body_text(text).map(|m| {
+                                Message::Request(crate::message::RequestMsg::BodyEdited(m))
+                            });
                         }
                     }
                 }

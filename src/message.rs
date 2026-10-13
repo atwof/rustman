@@ -25,18 +25,40 @@ pub enum SidebarMsg {
     PanelSelected(SidebarPanel),
     RequestOpened(SavedRequest),
     NewCollection,
-    RenameCollection { id: String, name: String },
+    RenameCollection {
+        id: String,
+        name: String,
+    },
     ToggleRenameCollection(String),
-    NewRequestIn { parent_id: String, parent_is_collection: bool },
+    NewRequestIn {
+        parent_id: String,
+        parent_is_collection: bool,
+    },
     ToggleRenameRequest(String),
-    RenameRequest { id: String, collection_id: String, name: String },
+    RenameRequest {
+        id: String,
+        collection_id: String,
+        name: String,
+    },
     DeleteCollection(String),
-    DeleteRequest { id: String, collection_id: String },
-    CloneRequest { id: String, collection_id: String },
+    DeleteRequest {
+        id: String,
+        collection_id: String,
+    },
+    CloneRequest {
+        id: String,
+        collection_id: String,
+    },
     // Folders (issue #53): Collection → Backend → Resource → Endpoint.
-    NewGroupIn { parent_id: String, parent_is_collection: bool },
+    NewGroupIn {
+        parent_id: String,
+        parent_is_collection: bool,
+    },
     ToggleRenameGroup(String),
-    RenameGroup { id: String, name: String },
+    RenameGroup {
+        id: String,
+        name: String,
+    },
     DeleteGroup(String),
     // Drag-to-reorder within a sibling list (issue #53).
     ItemDragStart(String),
@@ -77,6 +99,10 @@ pub enum SidebarPanel {
 #[derive(Debug, Clone)]
 pub enum RequestMsg {
     UrlChanged(String),
+    /// Actions from the URL bar editor. The bar performs nothing itself —
+    /// the handler decides per action (see `handle`), which is what lets
+    /// huge pastes route to import without ever entering the widget.
+    UrlEdited(iced::widget::text_editor::Action),
     MethodChanged(String),
     TabSelected(RequestTab),
     // Headers
@@ -103,6 +129,20 @@ pub enum RequestMsg {
     FormFieldRemoved(usize),
     FormFieldKeyChanged(usize, String),
     FormFieldValueChanged(usize, String),
+    /// Toggle the expanded (paged) editor for a big form value.
+    FormValueExpandToggled(usize),
+    FormValuePagePrev(usize),
+    FormValuePageNext(usize),
+    /// Editor events from an expanded form editor. Content edits write back
+    /// into the field value at once (see `FormValueEditor::update_editor`).
+    FormValueEdited(usize, iced_code_editor::Message),
+    /// Copy a form field's full value to the clipboard.
+    FormValueCopy(usize),
+    /// URL-bar input too large to be a URL and not a recognized command.
+    /// Dropped (the old URL is kept) so megabytes can never sit in the
+    /// single-line input and freeze its per-grapheme layout every frame.
+    /// Carries the rejected byte length for the status message.
+    OversizedUrlRejected(usize),
     // Auth
     AuthTypeChanged(String),
     BearerTokenChanged(String),
@@ -119,7 +159,7 @@ pub enum RequestMsg {
     JwtAlgoChanged(String),
     // Form file upload
     FormFieldTypeToggled(usize),
-    FormFieldPickFile(usize),                   // open file dialog for row index
+    FormFieldPickFile(usize), // open file dialog for row index
     FormFieldFilePicked(usize, String, String), // index, filename, base64_data
     // Scripts
     PreRequestScriptEdited(iced_code_editor::Message),
@@ -147,6 +187,21 @@ pub enum RequestMsg {
     SaveRequest,
     ImportCurl(String),
     ImportHttpie(String),
+    /// A command parsed off the UI thread (clipboard/file import, or a large
+    /// URL-bar paste). Applied exactly like a synchronous import; carries the
+    /// original byte length for the paste-guard check.
+    ImportCommandParsed {
+        parsed: crate::services::curl::ParsedCurl,
+        cmd_len: usize,
+    },
+    /// Import dialog (clipboard/file path that never puts megabytes through
+    /// a text widget — see `URL_GUARD_LEN`).
+    OpenImportDialog,
+    CloseImportDialog,
+    ImportFromClipboard,
+    ImportClipboardText(Option<String>),
+    ImportFromFile,
+    ImportFileReady(Option<(String, Vec<u8>)>),
     ExportCurl,
     CloseCurlModal,
     CopyCurlToClipboard,
@@ -197,7 +252,10 @@ pub enum WsMsg {
     TextFrame(String),
     Disconnected,
     Error(String),
-    Handshake { tab_id: String, sender: mpsc::Sender<String> },
+    Handshake {
+        tab_id: String,
+        sender: mpsc::Sender<String>,
+    },
 }
 
 // ── Git panel ─────────────────────────────────────────────────────────────────
@@ -323,8 +381,10 @@ pub enum LayoutMsg {
 
 #[derive(Debug, Clone)]
 pub enum AppMsg {
-
-    HttpResponse { generation: u64, result: HttpResult },
+    HttpResponse {
+        generation: u64,
+        result: HttpResult,
+    },
     OpenUrl(String),
 
     ViewerReady {
@@ -350,7 +410,10 @@ pub enum AppMsg {
     HtmlPreviewTick,
     /// `html` is shared rather than owned: this message is produced on a
     /// repeating timer, and copying a large HTML body every tick was pure waste.
-    HtmlPanelBounds { bounds: iced::Rectangle, html: std::sync::Arc<str> },
+    HtmlPanelBounds {
+        bounds: iced::Rectangle,
+        html: std::sync::Arc<str>,
+    },
     PdfPagePreviewReady {
         generation: u64,
         tab_id: String,
@@ -391,6 +454,8 @@ pub enum SettingsMsg {
     TlsOptionToggled(TlsOption),
     /// Footer tapped: three taps unlock the hidden creator card.
     CreatorTapped,
+    /// Toggle automatic update checks on launch (issue #57).
+    AutoCheckUpdatesToggled,
 }
 
 /// The individual TLS/connection settings, for `SettingsMsg::TlsOptionToggled`.
