@@ -20,6 +20,13 @@ pub const TEXT_LG: f32 = 15.0; // section/card headers
 
 static THEME_IDX: AtomicUsize = AtomicUsize::new(0);
 
+pub const RESPONSE_BODY_PADDING: iced::Padding = iced::Padding {
+    top: 12.0,
+    right: 12.0,
+    bottom: 2.0,
+    left: 12.0
+};
+
 pub struct ThemeSpec {
     pub name: &'static str,
     pub dark: bool,
@@ -493,6 +500,7 @@ impl Palette {
                 a: 0.28,
             },
             syntax_theme_name: t.syntax_theme,
+            json_key_color: accent,
         }
     }
 }

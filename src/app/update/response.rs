@@ -37,6 +37,28 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
             return clipboard::write::<Message>(body);
         }
         ResponseMsg::ViewerEdited(msg) => {
+            // Keep mouse selection, navigation, scrolling, and Copy working,
+            // while rejecting actions that would modify the response preview.
+            use iced_code_editor::Message as EditorMessage;
+            if matches!(
+                msg,
+                EditorMessage::CharacterInput(_)
+                    | EditorMessage::VimKey(_)
+                    | EditorMessage::Backspace
+                    | EditorMessage::Delete
+                    | EditorMessage::Enter
+                    | EditorMessage::Tab
+                    | EditorMessage::Cut
+                    | EditorMessage::Paste(_)
+                    | EditorMessage::DeleteSelection
+                    | EditorMessage::Undo
+                    | EditorMessage::Redo
+                    | EditorMessage::ImeCommit(_)
+                    | EditorMessage::ReplaceNext
+                    | EditorMessage::ReplaceAll
+            ) {
+                return Task::none();
+            }
             let tab = state.tabs.active_tab_mut();
             return tab
                 .response_editor

@@ -104,6 +104,7 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
     }
 
     let tab = state.tabs.active_tab_mut();
+
     tab.is_loading = true;
     tab.response = None;
     tab.set_script_logs(pre_request_logs);

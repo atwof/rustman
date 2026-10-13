@@ -53,7 +53,9 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                         text(val)
                             .size(11)
                             .color(Palette::text())
-                            .font(crate::ui::theme::MONO),
+                            .font(crate::ui::theme::MONO)
+                            .width(Length::Fill)
+                            .wrapping(iced_core::text::Wrapping::WordOrGlyph),
                     )
                     .width(Length::Fill)
                     .padding([2, 4]),
@@ -72,7 +74,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             })
             .padding([1, 4])
             .width(Length::Fill),
-        );
+        )
+        .padding(iced::padding::right(12).left(2).top(4).bottom(4));
     }
 
     scrollable(col)

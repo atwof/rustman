@@ -388,6 +388,7 @@ impl RequestTabState {
             "txt"
         };
         self.response_editor = make_code_editor(&display, syntax);
+        self.response_editor.set_show_whitespace(false);
     }
 
     /// Toggle the expanded editor for form field `index`. Expanding computes

@@ -174,6 +174,11 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
             .map(|m| Message::Response(ResponseMsg::ViewerEdited(m)))
     };
 
+    let body = container(body)
+        .padding([0,2])
+        .width(Length::Fill)
+        .height(Length::Fill);
+
     let mut panel = column![].spacing(0).height(Length::Fill);
     if let Some(note) = webview_note {
         panel = panel.push(preview_unavailable_banner(&note));
